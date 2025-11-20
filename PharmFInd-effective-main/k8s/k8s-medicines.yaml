@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: medicines-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: medicines-service
+  template:
+    metadata:
+      labels:
+        app: medicines-service
+    spec:
+      containers:
+        - name: medicines-container
+          image: medicines-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 4001
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: medicines-service
+spec:
+  selector:
+    app: medicines-service
+  type: NodePort
+  ports:
+    - port: 4001
+      targetPort: 4001
+      nodePort: 30401

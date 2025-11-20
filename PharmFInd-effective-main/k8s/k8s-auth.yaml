@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: auth-service
+  template:
+    metadata:
+      labels:
+        app: auth-service
+    spec:
+      containers:
+        - name: auth-container
+          image: auth-service:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: JWT_SECRET
+              value: "CHANGEME_SUPER_SECRET"
+            - name: FRONTEND_URL
+              value: "http://localhost:5173"
+            - name: EMAIL_MODE
+              value: "console"
+          ports:
+            - containerPort: 4000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth-service
+spec:
+  selector:
+    app: auth-service
+  type: NodePort
+  ports:
+    - port: 4000
+      targetPort: 4000
+      nodePort: 30400

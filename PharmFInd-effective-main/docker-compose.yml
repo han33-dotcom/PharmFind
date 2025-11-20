@@ -1,0 +1,143 @@
+version: '3.8'
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: pharmfind-postgres
+    environment:
+      POSTGRES_USER: pharm
+      POSTGRES_PASSWORD: pharm
+      POSTGRES_DB: pharmdb
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pharm"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  auth:
+    build:
+      context: ./server
+      dockerfile: Dockerfile.auth
+      args:
+        NODE_VERSION: 20-alpine
+    container_name: pharmfind-auth
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgres://pharm:pharm@postgres:5432/pharmdb
+      JWT_SECRET: CHANGEME_SUPER_SECRET
+      FRONTEND_URL: http://localhost:5173
+      EMAIL_MODE: console
+    depends_on:
+      - postgres
+    ports:
+      - "4000:4000"
+
+  medicines:
+    build:
+      context: ./server
+      dockerfile: Dockerfile.medicines
+      args:
+        NODE_VERSION: 20-alpine
+    container_name: pharmfind-medicines
+    environment:
+      NODE_ENV: production
+      PORT: 4001
+      DATABASE_URL: postgres://pharm:pharm@postgres:5432/pharmdb
+      JWT_SECRET: CHANGEME_SUPER_SECRET
+    depends_on:
+      - postgres
+    ports:
+      - "4001:4001"
+
+  pharmacies:
+    build:
+      context: ./server
+      dockerfile: Dockerfile.pharmacies
+      args:
+        NODE_VERSION: 20-alpine
+    container_name: pharmfind-pharmacies
+    environment:
+      NODE_ENV: production
+      PORT: 4002
+      DATABASE_URL: postgres://pharm:pharm@postgres:5432/pharmdb
+      JWT_SECRET: CHANGEME_SUPER_SECRET
+    depends_on:
+      - postgres
+    ports:
+      - "4002:4002"
+
+  orders:
+    build:
+      context: ./server
+      dockerfile: Dockerfile.orders
+      args:
+        NODE_VERSION: 20-alpine
+    container_name: pharmfind-orders
+    environment:
+      NODE_ENV: production
+      PORT: 4003
+      DATABASE_URL: postgres://pharm:pharm@postgres:5432/pharmdb
+      JWT_SECRET: CHANGEME_SUPER_SECRET
+    depends_on:
+      - postgres
+    ports:
+      - "4003:4003"
+
+  addresses:
+    build:
+      context: ./server
+      dockerfile: Dockerfile.addresses
+      args:
+        NODE_VERSION: 20-alpine
+    container_name: pharmfind-addresses
+    environment:
+      NODE_ENV: production
+      PORT: 4004
+      DATABASE_URL: postgres://pharm:pharm@postgres:5432/pharmdb
+      JWT_SECRET: CHANGEME_SUPER_SECRET
+    depends_on:
+      - postgres
+    ports:
+      - "4004:4004"
+
+  favorites:
+    build:
+      context: ./server
+      dockerfile: Dockerfile.favorites
+      args:
+        NODE_VERSION: 20-alpine
+    container_name: pharmfind-favorites
+    environment:
+      NODE_ENV: production
+      PORT: 4005
+      DATABASE_URL: postgres://pharm:pharm@postgres:5432/pharmdb
+      JWT_SECRET: CHANGEME_SUPER_SECRET
+    depends_on:
+      - postgres
+    ports:
+      - "4005:4005"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      args:
+        NODE_VERSION: 20-alpine
+        VITE_API_BASE_URL: http://localhost:5173
+    container_name: pharmfind-frontend
+    depends_on:
+      - auth
+      - medicines
+      - pharmacies
+      - orders
+      - addresses
+      - favorites
+    ports:
+      - "5173:80"
+
+volumes:
+  pgdata:
+  server_data:
+

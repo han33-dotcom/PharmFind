@@ -1,0 +1,29 @@
+# Node / build artifacts
+node_modules
+npm-debug.log*
+yarn-error.log*
+pnpm-lock.yaml
+dist
+.vite
+
+# Frontend specific
+*.local
+.env
+.env.*
+
+# Backend specific
+server/node_modules
+server/.env
+
+# VCS / editor
+.git
+.gitignore
+.DS_Store
+.idea
+.vscode
+Thumbs.db
+
+# Docker / Compose outputs
+docker-compose.override.yml
+docker-data
+

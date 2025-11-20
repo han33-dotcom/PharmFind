@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: favorites-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: favorites-service
+  template:
+    metadata:
+      labels:
+        app: favorites-service
+    spec:
+      containers:
+        - name: favorites-container
+          image: favorites-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 4005
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: favorites-service
+spec:
+  selector:
+    app: favorites-service
+  type: NodePort
+  ports:
+    - port: 4005
+      targetPort: 4005
+      nodePort: 30405
