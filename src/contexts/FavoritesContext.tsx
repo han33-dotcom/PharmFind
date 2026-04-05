@@ -1,86 +1,100 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-
-export interface FavoriteMedicine {
-  medicineId: number;
-  medicineName: string;
-  category: string;
-  lastPharmacyId: number;
-  lastPharmacyName: string;
-  lastPrice: number;
-  addedAt: string;
-}
+import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { FavoriteMedicine } from '@/types';
+import { FavoritesService } from '@/services/favorites.service';
 
 interface FavoritesContextType {
   favorites: FavoriteMedicine[];
-  addFavorite: (medicine: Omit<FavoriteMedicine, 'addedAt'>) => void;
-  removeFavorite: (medicineId: number) => void;
+  isLoading: boolean;
+  addFavorite: (medicine: Omit<FavoriteMedicine, 'addedAt'>) => Promise<void>;
+  removeFavorite: (medicineId: number) => Promise<void>;
   isFavorite: (medicineId: number) => boolean;
   getFavorites: () => FavoriteMedicine[];
+  refreshFavorites: () => Promise<void>;
 }
 
 const FavoritesContext = createContext<FavoritesContextType | undefined>(undefined);
 
-const STORAGE_KEY = 'pharmfind_favorites';
+const hasAuthToken = () => Boolean(localStorage.getItem('auth_token'));
 
 export const FavoritesProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [favorites, setFavorites] = useState<FavoriteMedicine[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      return saved ? JSON.parse(saved) : [];
-    } catch (error) {
-      console.error('Failed to load favorites from localStorage:', error);
-      return [];
+  const [favorites, setFavorites] = useState<FavoriteMedicine[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const refreshFavorites = async () => {
+    if (!hasAuthToken()) {
+      setFavorites([]);
+      return;
     }
-  });
+
+    setIsLoading(true);
+    try {
+      const nextFavorites = await FavoritesService.getFavorites();
+      setFavorites(nextFavorites);
+    } catch (error) {
+      console.error('Failed to load favorites:', error);
+      setFavorites([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(favorites));
-    } catch (error) {
-      console.error('Failed to save favorites to localStorage:', error);
-    }
-  }, [favorites]);
+    void refreshFavorites();
 
-  const addFavorite = (medicine: Omit<FavoriteMedicine, 'addedAt'>) => {
-    const newFavorite: FavoriteMedicine = {
-      ...medicine,
-      addedAt: new Date().toISOString(),
+    const handleAuthChange = () => {
+      void refreshFavorites();
     };
-    setFavorites((prev) => {
-      // Check if already exists
-      const exists = prev.find((fav) => fav.medicineId === medicine.medicineId);
-      if (exists) {
-        // Update existing favorite with new pharmacy/price data
-        return prev.map((fav) =>
-          fav.medicineId === medicine.medicineId ? newFavorite : fav
-        );
-      }
-      return [...prev, newFavorite];
-    });
+
+    window.addEventListener('auth-change', handleAuthChange);
+    return () => window.removeEventListener('auth-change', handleAuthChange);
+  }, []);
+
+  const addFavorite = async (medicine: Omit<FavoriteMedicine, 'addedAt'>) => {
+    try {
+      const savedFavorite = await FavoritesService.addFavorite(medicine);
+      setFavorites((prev) => {
+        const existingIndex = prev.findIndex((favorite) => favorite.medicineId === savedFavorite.medicineId);
+        if (existingIndex === -1) {
+          return [...prev, savedFavorite];
+        }
+
+        const nextFavorites = [...prev];
+        nextFavorites[existingIndex] = savedFavorite;
+        return nextFavorites;
+      });
+    } catch (error) {
+      console.error('Failed to save favorite:', error);
+      throw error;
+    }
   };
 
-  const removeFavorite = (medicineId: number) => {
-    setFavorites((prev) => prev.filter((fav) => fav.medicineId !== medicineId));
+  const removeFavorite = async (medicineId: number) => {
+    try {
+      await FavoritesService.removeFavorite(medicineId);
+      setFavorites((prev) => prev.filter((favorite) => favorite.medicineId !== medicineId));
+    } catch (error) {
+      console.error('Failed to remove favorite:', error);
+      throw error;
+    }
   };
 
-  const isFavorite = (medicineId: number): boolean => {
-    return favorites.some((fav) => fav.medicineId === medicineId);
-  };
+  const isFavorite = (medicineId: number): boolean => favorites.some((favorite) => favorite.medicineId === medicineId);
 
-  const getFavorites = (): FavoriteMedicine[] => {
-    return [...favorites].sort((a, b) => 
-      new Date(b.addedAt).getTime() - new Date(a.addedAt).getTime()
+  const getFavorites = (): FavoriteMedicine[] =>
+    [...favorites].sort(
+      (left, right) => new Date(right.addedAt).getTime() - new Date(left.addedAt).getTime()
     );
-  };
 
   return (
     <FavoritesContext.Provider
       value={{
         favorites,
+        isLoading,
         addFavorite,
         removeFavorite,
         isFavorite,
         getFavorites,
+        refreshFavorites,
       }}
     >
       {children}

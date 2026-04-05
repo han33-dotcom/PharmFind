@@ -20,19 +20,38 @@ export interface ApiError {
 }
 
 class ApiClient {
+  private prepareBody(data?: unknown): BodyInit | undefined {
+    if (data === undefined) {
+      return undefined;
+    }
+
+    if (typeof FormData !== 'undefined' && data instanceof FormData) {
+      return data;
+    }
+
+    return JSON.stringify(data);
+  }
+
   private async request<T>(
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
     const url = buildApiUrl(endpoint);
-    
+    const isFormDataBody = typeof FormData !== 'undefined' && options.body instanceof FormData;
+
     const config: RequestInit = {
       ...options,
       headers: {
-        'Content-Type': 'application/json',
         ...options.headers,
       },
     };
+
+    if (!isFormDataBody) {
+      config.headers = {
+        'Content-Type': 'application/json',
+        ...config.headers,
+      };
+    }
 
     // Add auth token if available (backend devs will implement this)
     const token = localStorage.getItem('auth_token');
@@ -86,6 +105,10 @@ class ApiClient {
         throw error;
       }
 
+      if (response.status === 204) {
+        return undefined as T;
+      }
+
       return await response.json();
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
@@ -99,8 +122,17 @@ class ApiClient {
   }
 
   async get<T>(endpoint: string, params?: Record<string, any>): Promise<T> {
-    const searchParams = params 
-      ? '?' + new URLSearchParams(params).toString() 
+    const sanitizedParams = params
+      ? Object.entries(params).reduce((acc, [key, value]) => {
+          if (value !== undefined && value !== null && value !== '') {
+            acc[key] = String(value);
+          }
+          return acc;
+        }, {} as Record<string, string>)
+      : undefined;
+
+    const searchParams = sanitizedParams && Object.keys(sanitizedParams).length > 0
+      ? '?' + new URLSearchParams(sanitizedParams).toString()
       : '';
     
     return this.request<T>(`${endpoint}${searchParams}`, {
@@ -111,21 +143,21 @@ class ApiClient {
   async post<T>(endpoint: string, data?: any): Promise<T> {
     return this.request<T>(endpoint, {
       method: 'POST',
-      body: data ? JSON.stringify(data) : undefined,
+      body: this.prepareBody(data),
     });
   }
 
   async put<T>(endpoint: string, data?: any): Promise<T> {
     return this.request<T>(endpoint, {
       method: 'PUT',
-      body: data ? JSON.stringify(data) : undefined,
+      body: this.prepareBody(data),
     });
   }
 
   async patch<T>(endpoint: string, data?: any): Promise<T> {
     return this.request<T>(endpoint, {
       method: 'PATCH',
-      body: data ? JSON.stringify(data) : undefined,
+      body: this.prepareBody(data),
     });
   }
 

@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Search, Pill, MapPin, Phone, Clock, ChevronDown, ChevronUp, ArrowLeft, Heart } from "lucide-react";
+import { ArrowLeft, ChevronDown, ChevronUp, Clock, Heart, MapPin, Phone, Pill, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,30 +10,20 @@ import Logo from "@/components/Logo";
 import { CartIcon } from "@/components/CartIcon";
 import { useFavorites } from "@/contexts/FavoritesContext";
 import { toast } from "@/hooks/use-toast";
+import { MedicinesService } from "@/services/medicines.service";
+import { PharmaciesService } from "@/services/pharmacies.service";
+import { Pharmacy, PharmacyMedicine } from "@/types";
 
-// Mock medicines data
-const mockMedicines = [
-  { id: 1, name: "Panadol 500mg", price: "$8.99", availableAt: 5, category: "Pain Relief", pharmacies: [1, 2, 3, 4, 6] },
-  { id: 2, name: "Advil 200mg", price: "$12.50", availableAt: 4, category: "Pain Relief", pharmacies: [1, 3, 4, 5] },
-  { id: 3, name: "Aspirin 100mg", price: "$6.00", availableAt: 6, category: "Pain Relief", pharmacies: [1, 2, 3, 4, 5, 6] },
-  { id: 4, name: "Vitamin C 1000mg", price: "$15.00", availableAt: 3, category: "Vitamins", pharmacies: [2, 3, 6] },
-  { id: 5, name: "Cough Syrup", price: "$10.50", availableAt: 4, category: "Cold & Flu", pharmacies: [1, 2, 4, 5] },
-  { id: 6, name: "Antibiotic Cream", price: "$18.00", availableAt: 2, category: "First Aid", pharmacies: [3, 6] },
-  { id: 7, name: "Eye Drops", price: "$9.99", availableAt: 5, category: "Eye Care", pharmacies: [1, 2, 3, 5, 6] },
-  { id: 8, name: "Allergy Relief", price: "$14.00", availableAt: 4, category: "Allergy", pharmacies: [1, 2, 4, 6] },
-  { id: 9, name: "Antacid Tablets", price: "$7.50", availableAt: 6, category: "Digestive", pharmacies: [1, 2, 3, 4, 5, 6] },
-  { id: 10, name: "Throat Lozenges", price: "$5.00", availableAt: 5, category: "Cold & Flu", pharmacies: [1, 3, 4, 5, 6] },
-];
+type SearchMedicineResult = {
+  id: number;
+  name: string;
+  category: string;
+  lowestPrice: number;
+  availableAt: number;
+  pharmacies: Pharmacy[];
+};
 
-// Mock pharmacies data (Real Beirut pharmacies)
-const mockPharmacies = [
-  { id: 1, name: "Habib Pharmacy", address: "Hamra Street, Hamra, Beirut", distance: "1.8 km", phone: "+961 1 340 555", matches: 12, isOpen: true },
-  { id: 2, name: "Wardieh Pharmacy", address: "Achrafieh Main Road, Achrafieh, Beirut", distance: "2.4 km", phone: "+961 1 200 800", matches: 8, isOpen: true },
-  { id: 3, name: "Verdun Pharmacy", address: "Verdun Street, Verdun, Beirut", distance: "3.2 km", phone: "+961 1 803 900", matches: 15, isOpen: true },
-  { id: 4, name: "Pharmacie Hamra", address: "Bliss Street, Hamra, Beirut", distance: "1.5 km", phone: "+961 1 350 200", matches: 10, isOpen: true },
-  { id: 5, name: "Gefinor Pharmacy", address: "Clemenceau Street, Hamra, Beirut", distance: "2.1 km", phone: "+961 1 369 400", matches: 6, isOpen: false },
-  { id: 6, name: "ABC Achrafieh Pharmacy", address: "ABC Mall, Achrafieh, Beirut", distance: "3.8 km", phone: "+961 1 209 100", matches: 9, isOpen: true },
-];
+const suggestedSearches = ["Panadol", "Aspirin", "Vitamin C", "Cough Syrup"];
 
 const SearchResults = () => {
   const [searchParams] = useSearchParams();
@@ -41,7 +31,50 @@ const SearchResults = () => {
   const query = searchParams.get("q") || "";
   const [searchQuery, setSearchQuery] = useState(query);
   const [expandedMedicine, setExpandedMedicine] = useState<number | null>(null);
+  const [medicines, setMedicines] = useState<SearchMedicineResult[]>([]);
+  const [pharmacies, setPharmacies] = useState<Pharmacy[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const { addFavorite, removeFavorite, isFavorite } = useFavorites();
+
+  useEffect(() => {
+    setSearchQuery(query);
+  }, [query]);
+
+  useEffect(() => {
+    const trimmedQuery = query.trim();
+    if (!trimmedQuery) {
+      setMedicines([]);
+      setPharmacies([]);
+      setLoadError(null);
+      return;
+    }
+
+    const loadResults = async () => {
+      try {
+        setIsLoading(true);
+        setLoadError(null);
+
+        const [medicineResults, pharmacyResults] = await Promise.all([
+          MedicinesService.searchMedicines(trimmedQuery),
+          PharmaciesService.searchPharmacies(),
+        ]);
+
+        const groupedMedicines = groupMedicineResults(medicineResults, pharmacyResults);
+        const filteredPharmacies = filterPharmacies(pharmacyResults, trimmedQuery, groupedMedicines);
+
+        setMedicines(groupedMedicines);
+        setPharmacies(filteredPharmacies);
+      } catch (error) {
+        console.error("Failed to fetch search results:", error);
+        setLoadError("Failed to load search results.");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadResults();
+  }, [query]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -59,37 +92,45 @@ const SearchResults = () => {
     setExpandedMedicine(expandedMedicine === id ? null : id);
   };
 
-  const getPharmacyById = (id: number) => mockPharmacies.find(p => p.id === id);
+  const toggleFavorite = async (medicine: SearchMedicineResult) => {
+    const preferredPharmacy = medicine.pharmacies[0];
+    if (!preferredPharmacy) {
+      return;
+    }
 
-  const toggleFavorite = (medicine: any) => {
-    const pharmacy = getPharmacyById(medicine.pharmacies[0]);
-    if (!pharmacy) return;
+    try {
+      if (isFavorite(medicine.id)) {
+        await removeFavorite(medicine.id);
+        toast({
+          title: "Removed from Favorites",
+          description: `${medicine.name} has been removed from your favorites.`,
+        });
+        return;
+      }
 
-    if (isFavorite(medicine.id)) {
-      removeFavorite(medicine.id);
-      toast({
-        title: "Removed from Favorites",
-        description: `${medicine.name} has been removed from your favorites.`,
-      });
-    } else {
-      addFavorite({
+      await addFavorite({
         medicineId: medicine.id,
         medicineName: medicine.name,
         category: medicine.category,
-        lastPharmacyId: pharmacy.id,
-        lastPharmacyName: pharmacy.name,
-        lastPrice: parseFloat(medicine.price.replace("$", "")),
+        lastPharmacyId: preferredPharmacy.id,
+        lastPharmacyName: preferredPharmacy.name,
+        lastPrice: medicine.lowestPrice,
       });
       toast({
         title: "Added to Favorites",
         description: `${medicine.name} has been added to your favorites.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Favorite Update Failed",
+        description: "Please try again.",
+        variant: "destructive",
       });
     }
   };
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
       <header className="border-b bg-card">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between mb-4">
@@ -107,10 +148,9 @@ const SearchResults = () => {
             </div>
           </div>
 
-          {/* Search Bar */}
           <form onSubmit={handleSearch} className="max-w-2xl mx-auto">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-5 w-5" />
+              <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
               <Input
                 type="text"
                 placeholder="Search for medicines or pharmacies..."
@@ -129,16 +169,14 @@ const SearchResults = () => {
         </div>
       </header>
 
-      {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
         {!query ? (
-          // Empty State
           <div className="text-center py-12">
             <Pill className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
             <h2 className="text-2xl font-semibold mb-2">Start searching</h2>
             <p className="text-muted-foreground mb-6">Find medicines or pharmacies near you</p>
             <div className="flex flex-wrap gap-2 justify-center">
-              {["Panadol", "Aspirin", "Vitamin C", "Cough Syrup"].map((suggestion) => (
+              {suggestedSearches.map((suggestion) => (
                 <Button
                   key={suggestion}
                   variant="outline"
@@ -149,147 +187,240 @@ const SearchResults = () => {
               ))}
             </div>
           </div>
+        ) : isLoading ? (
+          <div className="py-12 text-center text-muted-foreground">Loading search results...</div>
+        ) : loadError ? (
+          <div className="py-12 text-center">
+            <p className="text-muted-foreground mb-4">{loadError}</p>
+            <Button variant="outline" onClick={() => window.location.reload()}>
+              Try Again
+            </Button>
+          </div>
         ) : (
-          // Results Tabs
           <Tabs defaultValue="medicines" className="w-full">
             <TabsList className="grid w-full max-w-md mx-auto grid-cols-2">
               <TabsTrigger value="medicines">Medicines</TabsTrigger>
               <TabsTrigger value="pharmacies">Pharmacies</TabsTrigger>
             </TabsList>
 
-            {/* Medicines Tab */}
             <TabsContent value="medicines" className="mt-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {mockMedicines.map((medicine) => (
-                  <Card key={medicine.id} className="cursor-pointer hover:shadow-lg transition-shadow relative">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="absolute top-2 right-2 z-10"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleFavorite(medicine);
-                      }}
-                    >
-                      <Heart
-                        className={`h-5 w-5 ${
-                          isFavorite(medicine.id) ? "fill-primary text-primary" : ""
-                        }`}
-                      />
-                    </Button>
-                    <CardHeader>
-                      <div className="flex items-start gap-4">
-                        <div className="h-16 w-16 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                          <Pill className="h-8 w-8 text-primary" />
-                        </div>
-                        <div className="flex-1">
-                          <CardTitle className="text-lg mb-1">{medicine.name}</CardTitle>
-                          <Badge variant="secondary" className="text-xs">{medicine.category}</Badge>
-                        </div>
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="flex items-center justify-between mb-3">
-                        <span className="text-2xl font-bold text-primary">{medicine.price}</span>
-                        <span className="text-sm text-muted-foreground">
-                          Available at {medicine.availableAt} pharmacies
-                        </span>
-                      </div>
-
+              {medicines.length === 0 ? (
+                <EmptyState message={`No medicines found for "${query}".`} />
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {medicines.map((medicine) => (
+                    <Card key={medicine.id} className="cursor-pointer hover:shadow-lg transition-shadow relative">
                       <Button
-                        variant="outline"
-                        className="w-full"
-                        onClick={() => toggleMedicineExpand(medicine.id)}
+                        variant="ghost"
+                        size="icon"
+                        className="absolute top-2 right-2 z-10"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void toggleFavorite(medicine);
+                        }}
                       >
-                        {expandedMedicine === medicine.id ? (
-                          <>
-                            Hide Pharmacies <ChevronUp className="ml-2 h-4 w-4" />
-                          </>
-                        ) : (
-                          <>
-                            View Pharmacies <ChevronDown className="ml-2 h-4 w-4" />
-                          </>
-                        )}
+                        <Heart
+                          className={`h-5 w-5 ${isFavorite(medicine.id) ? "fill-primary text-primary" : ""}`}
+                        />
                       </Button>
+                      <CardHeader>
+                        <div className="flex items-start gap-4">
+                          <div className="h-16 w-16 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                            <Pill className="h-8 w-8 text-primary" />
+                          </div>
+                          <div className="flex-1">
+                            <CardTitle className="text-lg mb-1">{medicine.name}</CardTitle>
+                            <Badge variant="secondary" className="text-xs">
+                              {medicine.category}
+                            </Badge>
+                          </div>
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="flex items-center justify-between mb-3">
+                          <span className="text-2xl font-bold text-primary">
+                            ${medicine.lowestPrice.toFixed(2)}
+                          </span>
+                          <span className="text-sm text-muted-foreground">
+                            Available at {medicine.availableAt} pharmacies
+                          </span>
+                        </div>
 
-                      {expandedMedicine === medicine.id && (
-                        <div className="mt-4 space-y-3 pt-4 border-t">
-                          <p className="font-semibold text-sm">Available at:</p>
-                          {medicine.pharmacies.slice(0, 3).map((pharmacyId) => {
-                            const pharmacy = getPharmacyById(pharmacyId);
-                            if (!pharmacy) return null;
-                            return (
-                              <div key={pharmacy.id} className="flex items-start justify-between gap-2 p-3 bg-muted/50 rounded-lg">
+                        <Button
+                          variant="outline"
+                          className="w-full"
+                          onClick={() => toggleMedicineExpand(medicine.id)}
+                        >
+                          {expandedMedicine === medicine.id ? (
+                            <>
+                              Hide Pharmacies <ChevronUp className="ml-2 h-4 w-4" />
+                            </>
+                          ) : (
+                            <>
+                              View Pharmacies <ChevronDown className="ml-2 h-4 w-4" />
+                            </>
+                          )}
+                        </Button>
+
+                        {expandedMedicine === medicine.id && (
+                          <div className="mt-4 space-y-3 pt-4 border-t">
+                            <p className="font-semibold text-sm">Available at:</p>
+                            {medicine.pharmacies.slice(0, 5).map((pharmacy) => (
+                              <div
+                                key={pharmacy.id}
+                                className="flex items-start justify-between gap-2 p-3 bg-muted/50 rounded-lg"
+                              >
                                 <div className="flex-1">
                                   <p className="font-medium text-sm">{pharmacy.name}</p>
                                   <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
                                     <MapPin className="h-3 w-3" />
-                                    {pharmacy.distance}
+                                    {pharmacy.distance || pharmacy.address}
                                   </p>
                                 </div>
                                 <Button
                                   size="sm"
-                                  onClick={() => navigate(`/pharmacy/${pharmacy.id}?search=${medicine.name}`)}
+                                  onClick={() => navigate(`/pharmacy/${pharmacy.id}?search=${encodeURIComponent(medicine.name)}`)}
                                 >
                                   View Store
                                 </Button>
                               </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
+                            ))}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
             </TabsContent>
 
-            {/* Pharmacies Tab */}
             <TabsContent value="pharmacies" className="mt-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {mockPharmacies.map((pharmacy) => (
-                  <Card
-                    key={pharmacy.id}
-                    className="cursor-pointer hover:shadow-lg transition-shadow"
-                    onClick={() => navigate(`/pharmacy/${pharmacy.id}`)}
-                  >
-                    <CardHeader>
-                      <div className="flex items-start justify-between">
-                        <CardTitle className="text-lg">{pharmacy.name}</CardTitle>
-                        <Badge variant={pharmacy.isOpen ? "default" : "secondary"}>
-                          {pharmacy.isOpen ? "Open" : "Closed"}
-                        </Badge>
-                      </div>
-                      <Badge variant="outline" className="w-fit mt-2">
-                        {pharmacy.matches} matches found
-                      </Badge>
-                    </CardHeader>
-                    <CardContent className="space-y-2">
-                      <div className="flex items-start gap-2 text-sm">
-                        <MapPin className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-0.5" />
-                        <span>{pharmacy.address}</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-sm">
-                        <Phone className="h-4 w-4 text-muted-foreground" />
-                        <span>{pharmacy.phone}</span>
-                      </div>
-                      <div className="flex items-center justify-between pt-2">
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                          <Clock className="h-4 w-4" />
-                          <span>{pharmacy.distance}</span>
-                        </div>
-                        <Button size="sm">View Store</Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
+              {pharmacies.length === 0 ? (
+                <EmptyState message={`No pharmacies found for "${query}".`} />
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {pharmacies.map((pharmacy) => {
+                    const matchCount = medicines.filter((medicine) =>
+                      medicine.pharmacies.some((candidate) => candidate.id === pharmacy.id)
+                    ).length;
+
+                    return (
+                      <Card
+                        key={pharmacy.id}
+                        className="cursor-pointer hover:shadow-lg transition-shadow"
+                        onClick={() => navigate(`/pharmacy/${pharmacy.id}`)}
+                      >
+                        <CardHeader>
+                          <div className="flex items-start justify-between">
+                            <CardTitle className="text-lg">{pharmacy.name}</CardTitle>
+                            <Badge variant={pharmacy.isOpen ? "default" : "secondary"}>
+                              {pharmacy.isOpen ? "Open" : "Closed"}
+                            </Badge>
+                          </div>
+                          <Badge variant="outline" className="w-fit mt-2">
+                            {matchCount > 0 ? `${matchCount} medicine matches` : "Pharmacy match"}
+                          </Badge>
+                        </CardHeader>
+                        <CardContent className="space-y-2">
+                          <div className="flex items-start gap-2 text-sm">
+                            <MapPin className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-0.5" />
+                            <span>{pharmacy.address}</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-sm">
+                            <Phone className="h-4 w-4 text-muted-foreground" />
+                            <span>{pharmacy.phone}</span>
+                          </div>
+                          <div className="flex items-center justify-between pt-2">
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <Clock className="h-4 w-4" />
+                              <span>{pharmacy.distance || pharmacy.deliveryTime || "Available now"}</span>
+                            </div>
+                            <Button size="sm">View Store</Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              )}
             </TabsContent>
           </Tabs>
         )}
       </main>
     </div>
   );
+};
+
+const EmptyState = ({ message }: { message: string }) => (
+  <div className="text-center py-12">
+    <Pill className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+    <p className="text-muted-foreground">{message}</p>
+  </div>
+);
+
+const groupMedicineResults = (
+  medicineResults: PharmacyMedicine[],
+  pharmacies: Pharmacy[],
+): SearchMedicineResult[] => {
+  const pharmacyMap = new Map(pharmacies.map((pharmacy) => [pharmacy.id, pharmacy]));
+  const grouped = new Map<number, SearchMedicineResult>();
+
+  medicineResults.forEach((result) => {
+    const pharmacy = pharmacyMap.get(result.pharmacyId) || {
+      id: result.pharmacyId,
+      name: result.pharmacyName,
+      address: "",
+      phone: "",
+      rating: 0,
+      distance: "",
+      deliveryTime: "",
+      deliveryFee: 0,
+      isOpen: true,
+    };
+
+    const existing = grouped.get(result.id);
+    if (!existing) {
+      grouped.set(result.id, {
+        id: result.id,
+        name: result.name,
+        category: result.category,
+        lowestPrice: result.price,
+        availableAt: 1,
+        pharmacies: [pharmacy],
+      });
+      return;
+    }
+
+    const alreadyIncluded = existing.pharmacies.some((candidate) => candidate.id === pharmacy.id);
+    if (!alreadyIncluded) {
+      existing.pharmacies.push(pharmacy);
+      existing.availableAt += 1;
+    }
+    existing.lowestPrice = Math.min(existing.lowestPrice, result.price);
+  });
+
+  return Array.from(grouped.values()).sort((a, b) => a.name.localeCompare(b.name));
+};
+
+const filterPharmacies = (
+  pharmacies: Pharmacy[],
+  query: string,
+  medicines: SearchMedicineResult[],
+): Pharmacy[] => {
+  const normalizedQuery = query.toLowerCase();
+  const pharmaciesWithMedicineMatches = new Set(
+    medicines.flatMap((medicine) => medicine.pharmacies.map((pharmacy) => pharmacy.id)),
+  );
+
+  return pharmacies
+    .filter((pharmacy) => {
+      const directMatch =
+        pharmacy.name.toLowerCase().includes(normalizedQuery) ||
+        pharmacy.address.toLowerCase().includes(normalizedQuery);
+
+      return directMatch || pharmaciesWithMedicineMatches.has(pharmacy.id);
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
 };
 
 export default SearchResults;

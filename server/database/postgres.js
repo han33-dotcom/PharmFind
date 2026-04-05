@@ -6,6 +6,59 @@
 import pkg from 'pg';
 const { Pool } = pkg;
 
+const mapUserRecord = (user) => {
+  if (!user) return null;
+
+  return {
+    id: user.id,
+    email: user.email,
+    passwordHash: user.password_hash,
+    fullName: user.full_name,
+    phone: user.phone,
+    createdAt: user.created_at,
+    updatedAt: user.updated_at,
+    emailVerified: user.email_verified,
+  };
+};
+
+const mapVerificationRecord = (record) => {
+  if (!record) return null;
+
+  return {
+    id: record.id,
+    userId: record.user_id,
+    token: record.token,
+    createdAt: record.created_at,
+    expiresAt: record.expires_at,
+  };
+};
+
+const USER_UPDATE_FIELDS = {
+  email: 'email',
+  passwordHash: 'password_hash',
+  fullName: 'full_name',
+  phone: 'phone',
+  emailVerified: 'email_verified',
+};
+
+const PHARMACY_UPDATE_FIELDS = {
+  name: 'name',
+  address: 'address',
+  phone: 'phone',
+  ownerUserId: 'owner_user_id',
+  licenseNumber: 'license_number',
+  latitude: 'latitude',
+  longitude: 'longitude',
+  rating: 'rating',
+  isOpen: 'is_open',
+  hoursOpen: 'hours_open',
+  hoursClose: 'hours_close',
+  deliveryTime: 'delivery_time',
+  baseDeliveryFee: 'base_delivery_fee',
+  verified: 'verified',
+  verificationStatus: 'verification_status',
+};
+
 class PostgresDatabase {
   constructor() {
     // Create connection pool
@@ -36,29 +89,38 @@ class PostgresDatabase {
     `;
     const values = [user.id, user.email, user.passwordHash, user.fullName, user.phone || null, user.emailVerified || false];
     const result = await this.pool.query(query, values);
-    return result.rows[0];
+    return mapUserRecord(result.rows[0]);
   }
 
   async findUserByEmail(email) {
     const query = 'SELECT * FROM users WHERE email = $1';
     const result = await this.pool.query(query, [email]);
-    return result.rows[0] || null;
+    return mapUserRecord(result.rows[0]);
+  }
+
+  async findUserByPhone(phone) {
+    const query = 'SELECT * FROM users WHERE phone = $1';
+    const result = await this.pool.query(query, [phone]);
+    return mapUserRecord(result.rows[0]);
   }
 
   async findUserById(id) {
     const query = 'SELECT * FROM users WHERE id = $1';
     const result = await this.pool.query(query, [id]);
-    return result.rows[0] || null;
+    return mapUserRecord(result.rows[0]);
   }
 
   async updateUser(id, updates) {
     const fields = Object.keys(updates);
+    if (fields.length === 0) return this.findUserById(id);
+
+    const mappedFields = fields.map((field) => USER_UPDATE_FIELDS[field] || field);
     const values = Object.values(updates);
-    const setClause = fields.map((field, index) => `${field} = $${index + 2}`).join(', ');
+    const setClause = mappedFields.map((field, index) => `${field} = $${index + 2}`).join(', ');
     
     const query = `UPDATE users SET ${setClause}, updated_at = NOW() WHERE id = $1 RETURNING *`;
     const result = await this.pool.query(query, [id, ...values]);
-    return result.rows[0] || null;
+    return mapUserRecord(result.rows[0]);
   }
 
   // ==================== Medicine Operations ====================
@@ -96,6 +158,75 @@ class PostgresDatabase {
     const query = 'SELECT * FROM pharmacies WHERE id = $1';
     const result = await this.pool.query(query, [id]);
     return result.rows[0] || null;
+  }
+
+  async findPharmacyByOwnerId(ownerUserId) {
+    const query = 'SELECT * FROM pharmacies WHERE owner_user_id = $1 LIMIT 1';
+    const result = await this.pool.query(query, [ownerUserId]);
+    return result.rows[0] || null;
+  }
+
+  async createPharmacy(pharmacy) {
+    const query = `
+      INSERT INTO pharmacies (
+        name,
+        address,
+        phone,
+        owner_user_id,
+        license_number,
+        latitude,
+        longitude,
+        rating,
+        is_open,
+        hours_open,
+        hours_close,
+        delivery_time,
+        base_delivery_fee,
+        verified,
+        verification_status
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+      RETURNING *
+    `;
+    const values = [
+      pharmacy.name,
+      pharmacy.address,
+      pharmacy.phone,
+      pharmacy.ownerUserId || null,
+      pharmacy.licenseNumber || null,
+      pharmacy.latitude ?? null,
+      pharmacy.longitude ?? null,
+      pharmacy.rating ?? 0,
+      pharmacy.isOpen ?? true,
+      pharmacy.hours?.open ?? pharmacy.hoursOpen ?? null,
+      pharmacy.hours?.close ?? pharmacy.hoursClose ?? null,
+      pharmacy.deliveryTime ?? null,
+      pharmacy.baseDeliveryFee ?? 15,
+      pharmacy.verified ?? false,
+      pharmacy.verificationStatus ?? 'pending',
+    ];
+    const result = await this.pool.query(query, values);
+    return result.rows[0] || null;
+  }
+
+  async updatePharmacy(id, updates) {
+    const fields = Object.keys(updates);
+    if (fields.length === 0) return this.findPharmacyById(id);
+
+    const mappedFields = fields.map((field) => PHARMACY_UPDATE_FIELDS[field] || field);
+    const values = Object.values(updates);
+    const setClause = mappedFields.map((field, index) => `${field} = $${index + 2}`).join(', ');
+
+    const query = `UPDATE pharmacies SET ${setClause}, updated_at = NOW() WHERE id = $1 RETURNING *`;
+    const result = await this.pool.query(query, [id, ...values]);
+    return result.rows[0] || null;
+  }
+
+  async verifyPharmacy(id, verified = true) {
+    return this.updatePharmacy(id, {
+      verified,
+      verificationStatus: verified ? 'approved' : 'rejected',
+    });
   }
 
   async getMedicinesByPharmacy(pharmacyId) {
@@ -388,13 +519,13 @@ class PostgresDatabase {
       RETURNING *
     `;
     const result = await this.pool.query(query, [userId, token, expiresAt]);
-    return result.rows[0];
+    return mapVerificationRecord(result.rows[0]);
   }
 
   async findVerificationToken(token) {
     const query = 'SELECT * FROM email_verifications WHERE token = $1';
     const result = await this.pool.query(query, [token]);
-    return result.rows[0] || null;
+    return mapVerificationRecord(result.rows[0]);
   }
 
   async deleteVerificationToken(token) {

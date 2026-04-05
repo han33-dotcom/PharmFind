@@ -107,20 +107,28 @@ const OrderTracking = () => {
     });
   };
 
-  const handleAddToFavorites = (item: any) => {
-    addFavorite({
-      medicineId: item.medicineId,
-      medicineName: item.medicineName,
-      category: item.category,
-      lastPharmacyId: item.pharmacyId,
-      lastPharmacyName: item.pharmacyName,
-      lastPrice: item.price,
-    });
+  const handleAddToFavorites = async (item: any) => {
+    try {
+      await addFavorite({
+        medicineId: item.medicineId,
+        medicineName: item.medicineName,
+        category: item.category,
+        lastPharmacyId: item.pharmacyId,
+        lastPharmacyName: item.pharmacyName,
+        lastPrice: item.price,
+      });
 
-    toast({
-      title: "Added to Favorites",
-      description: `${item.medicineName} has been added to your favorites`,
-    });
+      toast({
+        title: "Added to Favorites",
+        description: `${item.medicineName} has been added to your favorites`,
+      });
+    } catch (error) {
+      toast({
+        title: "Favorite Update Failed",
+        description: "Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   return (
@@ -277,7 +285,7 @@ const OrderTracking = () => {
                         <Button
                           size="sm"
                           variant="ghost"
-                          onClick={() => handleAddToFavorites(item)}
+                          onClick={() => void handleAddToFavorites(item)}
                         >
                           <Heart
                             className={`h-4 w-4 ${

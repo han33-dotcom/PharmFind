@@ -69,6 +69,11 @@ class Database {
     return users.find(u => u.email === email);
   }
 
+  static findUserByPhone(phone) {
+    const users = this.read('users');
+    return users.find(u => u.phone === phone);
+  }
+
   static findUserById(id) {
     const users = this.read('users');
     return users.find(u => u.id === id);

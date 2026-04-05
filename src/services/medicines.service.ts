@@ -82,7 +82,13 @@ export class MedicinesService {
       });
     }
 
-    return apiClient.get<PharmacyMedicine[]>(`/pharmacies/${pharmacyId}/medicines`);
+    const response = await apiClient.get<{
+      pharmacyId: number;
+      pharmacyName?: string;
+      medicines: PharmacyMedicine[];
+    }>(`/pharmacies/${pharmacyId}/medicines`);
+
+    return response.medicines || [];
   }
 
   /**
@@ -95,6 +101,7 @@ export class MedicinesService {
       return Array.from(categories);
     }
 
-    return apiClient.get<string[]>(`/medicines/categories`);
+    const response = await apiClient.get<{ categories: string[] }>(`/medicines/categories`);
+    return response.categories || [];
   }
 }

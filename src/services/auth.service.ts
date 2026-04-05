@@ -20,6 +20,10 @@ export interface AuthResponse {
 }
 
 export class AuthService {
+  private static notifyAuthChanged(): void {
+    window.dispatchEvent(new Event("auth-change"));
+  }
+
   /**
    * Register a new user
    */
@@ -39,11 +43,13 @@ export class AuthService {
       };
       const mockToken = 'mock-token-' + Date.now();
       localStorage.setItem('auth_token', mockToken);
+      this.notifyAuthChanged();
       return { user: mockUser, token: mockToken };
     }
 
     const response = await apiClient.post<AuthResponse>('/auth/register', data);
     localStorage.setItem('auth_token', response.token);
+    this.notifyAuthChanged();
     return response;
   }
 
@@ -65,11 +71,13 @@ export class AuthService {
       };
       const mockToken = 'mock-token-' + Date.now();
       localStorage.setItem('auth_token', mockToken);
+      this.notifyAuthChanged();
       return { user: mockUser, token: mockToken };
     }
 
     const response = await apiClient.post<AuthResponse>('/auth/login', data);
     localStorage.setItem('auth_token', response.token);
+    this.notifyAuthChanged();
     return response;
   }
 
@@ -106,6 +114,7 @@ export class AuthService {
     localStorage.removeItem('pharmfind_orders');
     localStorage.removeItem('pharmfind_addresses');
     localStorage.removeItem('pharmfind_favorites');
+    this.notifyAuthChanged();
   }
 
   /**

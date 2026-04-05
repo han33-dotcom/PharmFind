@@ -49,7 +49,7 @@ const Checkout = () => {
   const navigate = useNavigate();
   const { cartItems, getItemsByPharmacy, clearCart } = useCart();
   const { saveOrder } = useOrders();
-  const { addresses } = useAddresses();
+  const { addresses, saveAddress } = useAddresses();
   const itemsByPharmacy = getItemsByPharmacy();
 
   const [addressMode, setAddressMode] = useState<"saved" | "new">("new");
@@ -242,18 +242,20 @@ const Checkout = () => {
         phoneNumber: deliveryForm.phone,
         additionalDetails: deliveryForm.deliveryNotes || "",
       };
-      
-      const existingAddresses = JSON.parse(localStorage.getItem("pharmfind_addresses") || "[]");
-      existingAddresses.push({
-        ...newAddress,
-        id: Date.now().toString(),
-      });
-      localStorage.setItem("pharmfind_addresses", JSON.stringify(existingAddresses));
-      
-      toast({
-        title: "Address Saved",
-        description: "Your address has been saved for future orders.",
-      });
+
+      try {
+        await saveAddress(newAddress);
+        toast({
+          title: "Address Saved",
+          description: "Your address has been saved for future orders.",
+        });
+      } catch (error) {
+        toast({
+          title: "Address Save Failed",
+          description: "Your order was created, but the address could not be saved for future use.",
+          variant: "destructive",
+        });
+      }
     }
 
     const orderId = `ORD-${Date.now()}`;

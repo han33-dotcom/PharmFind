@@ -1,67 +1,88 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from "react";
-
-export type Address = {
-  id: string;
-  nickname: "Home" | "Work" | "Mom's" | "Other";
-  fullName: string;
-  address: string; // Street address
-  building: string;
-  floor: string;
-  phoneNumber: string;
-  additionalDetails: string;
-};
+import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { Address, CreateAddressData } from "@/types";
+import { AddressesService } from "@/services/addresses.service";
 
 type AddressContextType = {
   addresses: Address[];
-  saveAddress: (address: Omit<Address, "id"> | Address) => void;
-  deleteAddress: (id: string) => void;
+  isLoading: boolean;
+  saveAddress: (address: Omit<Address, "id"> | Address) => Promise<void>;
+  deleteAddress: (id: string) => Promise<void>;
   getAddresses: () => Address[];
   getAddressById: (id: string) => Address | undefined;
+  refreshAddresses: () => Promise<void>;
 };
 
 const AddressContext = createContext<AddressContextType | undefined>(undefined);
 
-const STORAGE_KEY = "pharmfind_addresses";
+const hasAuthToken = () => Boolean(localStorage.getItem("auth_token"));
 
 export const AddressProvider = ({ children }: { children: ReactNode }) => {
-  const [addresses, setAddresses] = useState<Address[]>(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    return stored ? JSON.parse(stored) : [];
-  });
+  const [addresses, setAddresses] = useState<Address[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
 
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(addresses));
-  }, [addresses]);
+  const refreshAddresses = async () => {
+    if (!hasAuthToken()) {
+      setAddresses([]);
+      return;
+    }
 
-  const saveAddress = (addressData: Omit<Address, "id"> | Address) => {
-    if ("id" in addressData) {
-      // Update existing address
-      setAddresses((prev) =>
-        prev.map((addr) => (addr.id === addressData.id ? addressData : addr))
-      );
-    } else {
-      // Add new address
-      const newAddress: Address = {
-        ...addressData,
-        id: Date.now().toString(),
-      };
-      setAddresses((prev) => [...prev, newAddress]);
+    setIsLoading(true);
+    try {
+      const nextAddresses = await AddressesService.getAddresses();
+      setAddresses(nextAddresses);
+    } catch (error) {
+      console.error("Failed to load addresses:", error);
+      setAddresses([]);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const deleteAddress = (id: string) => {
-    setAddresses((prev) => prev.filter((addr) => addr.id !== id));
+  useEffect(() => {
+    void refreshAddresses();
+
+    const handleAuthChange = () => {
+      void refreshAddresses();
+    };
+
+    window.addEventListener("auth-change", handleAuthChange);
+    return () => window.removeEventListener("auth-change", handleAuthChange);
+  }, []);
+
+  const saveAddress = async (addressData: Omit<Address, "id"> | Address) => {
+    try {
+      if ("id" in addressData) {
+        const updatedAddress = await AddressesService.updateAddress(addressData.id, addressData);
+        setAddresses((prev) =>
+          prev.map((address) => (address.id === updatedAddress.id ? updatedAddress : address))
+        );
+        return;
+      }
+
+      const createdAddress = await AddressesService.createAddress(addressData as CreateAddressData);
+      setAddresses((prev) => [...prev, createdAddress]);
+    } catch (error) {
+      console.error("Failed to save address:", error);
+      throw error;
+    }
+  };
+
+  const deleteAddress = async (id: string) => {
+    try {
+      await AddressesService.deleteAddress(id);
+      setAddresses((prev) => prev.filter((address) => address.id !== id));
+    } catch (error) {
+      console.error("Failed to delete address:", error);
+      throw error;
+    }
   };
 
   const getAddresses = () => addresses;
-
-  const getAddressById = (id: string) => {
-    return addresses.find((addr) => addr.id === id);
-  };
+  const getAddressById = (id: string) => addresses.find((address) => address.id === id);
 
   return (
     <AddressContext.Provider
-      value={{ addresses, saveAddress, deleteAddress, getAddresses, getAddressById }}
+      value={{ addresses, isLoading, saveAddress, deleteAddress, getAddresses, getAddressById, refreshAddresses }}
     >
       {children}
     </AddressContext.Provider>

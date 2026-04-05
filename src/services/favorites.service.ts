@@ -25,7 +25,8 @@ export class FavoritesService {
       );
     }
 
-    return apiClient.get<FavoriteMedicine[]>(`/users/me/favorites`);
+    const response = await apiClient.get<{ data: FavoriteMedicine[] }>(`/users/me/favorites`);
+    return response.data || [];
   }
 
   /**

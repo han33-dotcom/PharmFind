@@ -21,7 +21,8 @@ export class AddressesService {
       return stored ? JSON.parse(stored) : [];
     }
 
-    return apiClient.get<Address[]>(`/users/me/addresses`);
+    const response = await apiClient.get<{ data: Address[] }>(`/users/me/addresses`);
+    return response.data || [];
   }
 
   /**

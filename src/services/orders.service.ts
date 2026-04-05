@@ -52,7 +52,8 @@ export class OrdersService {
       return stored ? JSON.parse(stored) : [];
     }
 
-    return apiClient.get<Order[]>(`/orders`);
+    const response = await apiClient.get<{ data: Order[] }>(`/orders`);
+    return response.data || [];
   }
 
   /**

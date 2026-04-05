@@ -44,20 +44,33 @@ CREATE TABLE IF NOT EXISTS pharmacies (
     name VARCHAR(255) NOT NULL,
     address TEXT NOT NULL,
     phone VARCHAR(20) NOT NULL,
+    owner_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    license_number VARCHAR(100),
     latitude DECIMAL(10,8),
     longitude DECIMAL(11,8),
     rating DECIMAL(2,1) DEFAULT 0,
     is_open BOOLEAN DEFAULT TRUE,
     hours_open TIME,
     hours_close TIME,
+    delivery_time VARCHAR(50),
     base_delivery_fee DECIMAL(10,2) DEFAULT 15.00,
+    verified BOOLEAN DEFAULT FALSE,
+    verification_status VARCHAR(20) DEFAULT 'pending',
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW(),
-    CONSTRAINT check_rating CHECK (rating >= 0 AND rating <= 5)
+    CONSTRAINT check_rating CHECK (rating >= 0 AND rating <= 5),
+    CONSTRAINT check_verification_status CHECK (verification_status IN ('pending', 'approved', 'rejected'))
 );
+
+ALTER TABLE pharmacies ADD COLUMN IF NOT EXISTS owner_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE pharmacies ADD COLUMN IF NOT EXISTS license_number VARCHAR(100);
+ALTER TABLE pharmacies ADD COLUMN IF NOT EXISTS delivery_time VARCHAR(50);
+ALTER TABLE pharmacies ADD COLUMN IF NOT EXISTS verified BOOLEAN DEFAULT FALSE;
+ALTER TABLE pharmacies ADD COLUMN IF NOT EXISTS verification_status VARCHAR(20) DEFAULT 'pending';
 
 CREATE INDEX IF NOT EXISTS idx_pharmacies_location ON pharmacies(latitude, longitude);
 CREATE INDEX IF NOT EXISTS idx_pharmacies_is_open ON pharmacies(is_open);
+CREATE INDEX IF NOT EXISTS idx_pharmacies_owner_user_id ON pharmacies(owner_user_id);
 
 -- ==================== Pharmacy Inventory Table ====================
 CREATE TABLE IF NOT EXISTS pharmacy_inventory (

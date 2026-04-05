@@ -14,7 +14,7 @@ const Favorites = () => {
   const favorites = getFavorites();
 
   const handleRemove = (medicineId: number, medicineName: string) => {
-    removeFavorite(medicineId);
+    void removeFavorite(medicineId);
     toast({
       title: "Removed from Favorites",
       description: `${medicineName} has been removed from your favorites.`,

@@ -92,18 +92,17 @@ const UserSettings = () => {
   };
 
   const handleDeleteAddress = (id: string) => {
-    deleteAddress(id);
-    setDeleteAddressId(null);
+    void deleteAddress(id).finally(() => {
+      setDeleteAddressId(null);
+    });
   };
 
   const handleSaveAddress = () => {
-    if (editingAddressId) {
-      // Update existing address
-      saveAddress({ ...currentAddress, id: editingAddressId } as Address);
-    } else {
-      // Add new address
-      saveAddress(currentAddress as Omit<Address, "id">);
-    }
+    const nextAddress = editingAddressId
+      ? ({ ...currentAddress, id: editingAddressId } as Address)
+      : (currentAddress as Omit<Address, "id">);
+
+    void saveAddress(nextAddress);
     
     // Reset form
     setIsAddingAddress(false);
