@@ -18,17 +18,10 @@ import { useAddresses } from "@/contexts/AddressContext";
 import { toast } from "@/hooks/use-toast";
 import { z } from "zod";
 import PrescriptionUpload from "@/components/checkout/PrescriptionUpload";
+import { PharmaciesService } from "@/services/pharmacies.service";
 import { PrescriptionsService } from "@/services/prescriptions.service";
-import { mockMedicines } from "@/data/mock/medicines.mock";
 
-const pharmacyDetails: Record<string, { id: number; name: string; address: string; phone: string }> = {
-  "1": { id: 1, name: "Habib Pharmacy", address: "Hamra Street, Beirut", phone: "+961 1 340555" },
-  "2": { id: 2, name: "Wardieh Pharmacy", address: "Achrafieh, Beirut", phone: "+961 1 200300" },
-  "3": { id: 3, name: "Raouche Pharmacy", address: "Raouche, Beirut", phone: "+961 1 789456" },
-  "4": { id: 4, name: "Verdun Pharmacy", address: "Verdun Street, Beirut", phone: "+961 1 456789" },
-  "5": { id: 5, name: "Mazraa Pharmacy", address: "Mazraa, Beirut", phone: "+961 1 654321" },
-  "6": { id: 6, name: "Clemenceau Pharmacy", address: "Clemenceau Street, Beirut", phone: "+961 1 987654" },
-};
+type CheckoutPharmacyDetails = Record<number, { id: number; name: string; address: string; phone: string }>;
 
 const deliverySchema = z.object({
   fullName: z.string().min(2, "Name must be at least 2 characters"),
@@ -96,6 +89,7 @@ const Checkout = () => {
   });
 
   const [pickupTimes, setPickupTimes] = useState<Record<number, string>>({});
+  const [pharmacyDetails, setPharmacyDetails] = useState<CheckoutPharmacyDetails>({});
   const [paymentMethod, setPaymentMethod] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -111,10 +105,49 @@ const Checkout = () => {
   const hasReservation = cartItems.some((item) => item.type === 'reservation');
   
   // Check if any item requires prescription
-  const requiresPrescription = cartItems.some((item) => {
-    const medicine = mockMedicines.find(m => m.id === item.medicineId);
-    return medicine?.requiresPrescription;
-  });
+  const requiresPrescription = cartItems.some((item) => item.requiresPrescription);
+
+  useEffect(() => {
+    const pharmacyIds = [...new Set(cartItems.map((item) => item.pharmacyId))];
+    if (pharmacyIds.length === 0) {
+      setPharmacyDetails({});
+      return;
+    }
+
+    const loadPharmacyDetails = async () => {
+      try {
+        const details = await Promise.all(
+          pharmacyIds.map(async (pharmacyId) => {
+            const pharmacy = await PharmaciesService.getPharmacyById(pharmacyId);
+            return pharmacy
+              ? [
+                  pharmacyId,
+                  {
+                    id: pharmacy.id,
+                    name: pharmacy.name,
+                    address: pharmacy.address,
+                    phone: pharmacy.phone,
+                  },
+                ]
+              : null;
+          })
+        );
+
+        setPharmacyDetails(
+          details.reduce((acc, entry) => {
+            if (entry) {
+              acc[entry[0]] = entry[1];
+            }
+            return acc;
+          }, {} as CheckoutPharmacyDetails)
+        );
+      } catch (error) {
+        console.error("Failed to load checkout pharmacy details:", error);
+      }
+    };
+
+    void loadPharmacyDetails();
+  }, [cartItems]);
 
   const reservationPharmacies = Object.entries(itemsByPharmacy).filter(([, items]) =>
     items.some((item) => item.type === 'reservation')
@@ -277,6 +310,10 @@ const Checkout = () => {
         total,
         prescriptionId,
       });
+
+      if (prescriptionId) {
+        await PrescriptionsService.attachPrescriptionToOrder(prescriptionId, orderId);
+      }
 
       clearCart();
       navigate(`/order-confirmation?orderId=${orderId}`);
@@ -581,7 +618,12 @@ const Checkout = () => {
 
                   {/* Pickup times for each pharmacy */}
                   {reservationPharmacies.map(([pharmacyId, items]) => {
-                    const pharmacy = pharmacyDetails[pharmacyId];
+                    const pharmacy = pharmacyDetails[Number(pharmacyId)] || {
+                      id: Number(pharmacyId),
+                      name: items[0]?.pharmacyName || `Pharmacy ${pharmacyId}`,
+                      address: "Address unavailable",
+                      phone: "",
+                    };
                     return (
                       <div key={pharmacyId} className="p-4 border rounded-lg space-y-3">
                         <div>
@@ -691,7 +733,12 @@ const Checkout = () => {
                 {/* Items grouped by pharmacy */}
                 <div className="space-y-3 max-h-96 overflow-y-auto">
                   {Object.entries(itemsByPharmacy).map(([pharmacyId, items]) => {
-                    const pharmacy = pharmacyDetails[pharmacyId];
+                    const pharmacy = pharmacyDetails[Number(pharmacyId)] || {
+                      id: Number(pharmacyId),
+                      name: items[0]?.pharmacyName || `Pharmacy ${pharmacyId}`,
+                      address: "Address unavailable",
+                      phone: "",
+                    };
                     return (
                       <div key={pharmacyId} className="border-b pb-3 last:border-0">
                         <h4 className="font-semibold text-sm mb-2">{pharmacy.name}</h4>

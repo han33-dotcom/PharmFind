@@ -34,6 +34,37 @@ const mapVerificationRecord = (record) => {
   };
 };
 
+const mapPasswordResetRecord = (record) => {
+  if (!record) return null;
+
+  return {
+    id: record.id,
+    userId: record.user_id,
+    token: record.token,
+    createdAt: record.created_at,
+    expiresAt: record.expires_at,
+  };
+};
+
+const mapPrescriptionRecord = (record) => {
+  if (!record) return null;
+
+  return {
+    id: record.id,
+    userId: record.user_id,
+    orderId: record.order_id,
+    fileUrl: record.file_url,
+    fileName: record.file_name,
+    fileType: record.file_type,
+    fileSize: record.file_size,
+    uploadedAt: record.uploaded_at,
+    status: record.status,
+    reviewedBy: record.reviewed_by,
+    reviewedAt: record.reviewed_at,
+    rejectionReason: record.rejection_reason,
+  };
+};
+
 const USER_UPDATE_FIELDS = {
   email: 'email',
   passwordHash: 'password_hash',
@@ -74,6 +105,19 @@ const INVENTORY_UPDATE_FIELDS = {
   price: 'price',
   stockStatus: 'stock_status',
   quantity: 'quantity',
+};
+
+const PRESCRIPTION_UPDATE_FIELDS = {
+  orderId: 'order_id',
+  reviewedBy: 'reviewed_by',
+  reviewedAt: 'reviewed_at',
+  rejectionReason: 'rejection_reason',
+  fileUrl: 'file_url',
+  fileName: 'file_name',
+  fileType: 'file_type',
+  fileSize: 'file_size',
+  uploadedAt: 'uploaded_at',
+  status: 'status',
 };
 
 class PostgresDatabase {
@@ -138,6 +182,33 @@ class PostgresDatabase {
     const query = `UPDATE users SET ${setClause}, updated_at = NOW() WHERE id = $1 RETURNING *`;
     const result = await this.pool.query(query, [id, ...values]);
     return mapUserRecord(result.rows[0]);
+  }
+
+  async deleteUser(id) {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const ownedPharmaciesResult = await client.query(
+        'SELECT id FROM pharmacies WHERE owner_user_id = $1',
+        [id],
+      );
+      const ownedPharmacyIds = ownedPharmaciesResult.rows.map((row) => row.id);
+
+      if (ownedPharmacyIds.length > 0) {
+        await client.query('DELETE FROM pharmacy_inventory WHERE pharmacy_id = ANY($1::int[])', [ownedPharmacyIds]);
+        await client.query('DELETE FROM pharmacies WHERE id = ANY($1::int[])', [ownedPharmacyIds]);
+      }
+
+      await client.query('DELETE FROM users WHERE id = $1', [id]);
+      await client.query('COMMIT');
+      return true;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   // ==================== Medicine Operations ====================
@@ -313,6 +384,23 @@ class PostgresDatabase {
     return result.rows[0] || null;
   }
 
+  async createInventoryItem(item) {
+    const query = `
+      INSERT INTO pharmacy_inventory (pharmacy_id, medicine_id, price, stock_status, quantity, last_updated)
+      VALUES ($1, $2, $3, $4, $5, NOW())
+      RETURNING *
+    `;
+    const values = [
+      item.pharmacyId,
+      item.medicineId,
+      item.price,
+      item.stockStatus,
+      item.quantity ?? 0,
+    ];
+    const result = await this.pool.query(query, values);
+    return result.rows[0] || null;
+  }
+
   // ==================== Order Operations ====================
   async createOrder(order) {
     const client = await this.pool.connect();
@@ -321,8 +409,8 @@ class PostgresDatabase {
 
       // Create order
       const orderQuery = `
-        INSERT INTO orders (id, order_number, user_id, status, subtotal, delivery_fees, total, payment_method, delivery_address, phone_number)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        INSERT INTO orders (id, order_number, user_id, status, prescription_id, subtotal, delivery_fees, total, payment_method, delivery_address, phone_number)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         RETURNING *
       `;
       const orderValues = [
@@ -330,6 +418,7 @@ class PostgresDatabase {
         order.orderNumber || `ORD-${Date.now()}`,
         order.userId,
         order.status || 'Pending',
+        order.prescriptionId || null,
         order.subtotal,
         order.deliveryFees || 0,
         order.total,
@@ -343,8 +432,8 @@ class PostgresDatabase {
       // Create order items
       if (order.items && order.items.length > 0) {
         const itemQuery = `
-          INSERT INTO order_items (order_id, medicine_id, pharmacy_id, medicine_name, pharmacy_name, quantity, price, type)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          INSERT INTO order_items (order_id, medicine_id, pharmacy_id, medicine_name, pharmacy_name, quantity, price, type, requires_prescription)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         `;
         for (const item of order.items) {
           await client.query(itemQuery, [
@@ -356,6 +445,7 @@ class PostgresDatabase {
             item.quantity,
             item.price,
             item.type,
+            item.requiresPrescription ?? false,
           ]);
         }
       }
@@ -392,7 +482,8 @@ class PostgresDatabase {
               'pharmacyName', oi.pharmacy_name,
               'quantity', oi.quantity,
               'price', oi.price,
-              'type', oi.type
+              'type', oi.type,
+              'requiresPrescription', oi.requires_prescription
             )
           ) FILTER (WHERE oi.id IS NOT NULL),
           '[]'
@@ -435,7 +526,8 @@ class PostgresDatabase {
               'pharmacyName', oi.pharmacy_name,
               'quantity', oi.quantity,
               'price', oi.price,
-              'type', oi.type
+              'type', oi.type,
+              'requiresPrescription', oi.requires_prescription
             )
           ) FILTER (WHERE oi.id IS NOT NULL),
           '[]'
@@ -468,7 +560,8 @@ class PostgresDatabase {
               'pharmacyName', oi.pharmacy_name,
               'quantity', oi.quantity,
               'price', oi.price,
-              'type', oi.type
+              'type', oi.type,
+              'requiresPrescription', oi.requires_prescription
             )
           ) FILTER (WHERE oi.id IS NOT NULL),
           '[]'
@@ -562,7 +655,8 @@ class PostgresDatabase {
               'pharmacyName', oi.pharmacy_name,
               'quantity', oi.quantity,
               'price', oi.price,
-              'type', oi.type
+              'type', oi.type,
+              'requiresPrescription', oi.requires_prescription
             )
           ) FILTER (WHERE oi.id IS NOT NULL),
           '[]'
@@ -619,7 +713,8 @@ class PostgresDatabase {
               'pharmacyName', oi.pharmacy_name,
               'quantity', oi.quantity,
               'price', oi.price,
-              'type', oi.type
+              'type', oi.type,
+              'requiresPrescription', oi.requires_prescription
             )
           ) FILTER (WHERE oi.id IS NOT NULL),
           '[]'
@@ -783,6 +878,88 @@ class PostgresDatabase {
   async deleteVerificationToken(token) {
     const query = 'DELETE FROM email_verifications WHERE token = $1';
     await this.pool.query(query, [token]);
+    return true;
+  }
+
+  async createPasswordResetToken(userId, token) {
+    await this.pool.query('DELETE FROM password_resets WHERE user_id = $1', [userId]);
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+    const result = await this.pool.query(
+      `
+        INSERT INTO password_resets (user_id, token, expires_at)
+        VALUES ($1, $2, $3)
+        RETURNING *
+      `,
+      [userId, token, expiresAt]
+    );
+    return mapPasswordResetRecord(result.rows[0]);
+  }
+
+  async findPasswordResetToken(token) {
+    const result = await this.pool.query('SELECT * FROM password_resets WHERE token = $1', [token]);
+    return mapPasswordResetRecord(result.rows[0]);
+  }
+
+  async deletePasswordResetToken(token) {
+    await this.pool.query('DELETE FROM password_resets WHERE token = $1', [token]);
+    return true;
+  }
+
+  async createPrescription(prescription) {
+    const result = await this.pool.query(
+      `
+        INSERT INTO prescriptions (
+          id, user_id, order_id, file_url, file_name, file_type, file_size, status, reviewed_by, reviewed_at, rejection_reason
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        RETURNING *
+      `,
+      [
+        prescription.id,
+        prescription.userId,
+        prescription.orderId || null,
+        prescription.fileUrl,
+        prescription.fileName,
+        prescription.fileType,
+        prescription.fileSize,
+        prescription.status,
+        prescription.reviewedBy || null,
+        prescription.reviewedAt || null,
+        prescription.rejectionReason || null,
+      ]
+    );
+    return mapPrescriptionRecord(result.rows[0]);
+  }
+
+  async findPrescriptionById(id) {
+    const result = await this.pool.query('SELECT * FROM prescriptions WHERE id = $1', [id]);
+    return mapPrescriptionRecord(result.rows[0]);
+  }
+
+  async updatePrescription(id, updates) {
+    const fields = Object.keys(updates);
+    if (fields.length === 0) return this.findPrescriptionById(id);
+
+    const mappedFields = fields.map((field) => PRESCRIPTION_UPDATE_FIELDS[field] || field);
+    const setClause = mappedFields.map((field, index) => `${field} = $${index + 2}`).join(', ');
+    const values = Object.values(updates);
+    const result = await this.pool.query(
+      `UPDATE prescriptions SET ${setClause} WHERE id = $1 RETURNING *`,
+      [id, ...values]
+    );
+    return mapPrescriptionRecord(result.rows[0]);
+  }
+
+  async getPrescriptionsByOrderId(orderId) {
+    const result = await this.pool.query(
+      'SELECT * FROM prescriptions WHERE order_id = $1 ORDER BY uploaded_at DESC',
+      [orderId]
+    );
+    return result.rows.map(mapPrescriptionRecord);
+  }
+
+  async deletePrescription(id) {
+    await this.pool.query('DELETE FROM prescriptions WHERE id = $1', [id]);
     return true;
   }
 

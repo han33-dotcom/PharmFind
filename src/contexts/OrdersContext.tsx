@@ -98,6 +98,7 @@ const toCartItem = (item: ApiOrderItem, index: number): CartItem => ({
   price: item.price,
   quantity: item.quantity,
   type: item.type,
+  requiresPrescription: item.requiresPrescription,
   stockStatus: 'In Stock',
   addedAt: Date.now(),
 });
@@ -149,6 +150,7 @@ const toCreateOrderData = (orderData: CreateOrderPayload): CreateOrderData => ({
     quantity: item.quantity,
     price: item.price,
     type: item.type,
+    requiresPrescription: item.requiresPrescription,
   })),
   subtotal: orderData.subtotal,
   deliveryFees: orderData.deliveryFees,

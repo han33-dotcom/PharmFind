@@ -22,6 +22,7 @@ const mapOrderItem = (item) => ({
   quantity: Number(item.quantity ?? 0),
   price: Number(item.price ?? 0),
   type: item.type,
+  requiresPrescription: Boolean(item.requiresPrescription ?? item.requires_prescription),
 });
 
 const mapStatusHistoryEntry = (entry) => ({

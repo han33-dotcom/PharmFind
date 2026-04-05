@@ -12,6 +12,7 @@ import Index from "./pages/Index";
 import Favorites from "./pages/Favorites";
 import Auth from "./pages/Auth";
 import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
 import UserSettings from "./pages/UserSettings";
 import SearchResults from "./pages/SearchResults";
 import PharmacyStore from "./pages/PharmacyStore";
@@ -78,6 +79,7 @@ const App = () => (
               <Route path="/" element={<Auth />} />
             </Route>
             <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/verify-email" element={<VerifyEmail />} />
             <Route element={<AuthGate allowedRoles={["patient"]} />}>
               <Route path="/dashboard" element={<Index />} />

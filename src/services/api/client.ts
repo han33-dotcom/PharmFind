@@ -19,6 +19,38 @@ export interface ApiError {
   errors?: Record<string, string[]>;
 }
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
+const toApiError = (responseStatus: number, responseStatusText: string, errorData: unknown): ApiError => {
+  if (isRecord(errorData) && isRecord(errorData.error)) {
+    const nestedError = errorData.error;
+    return {
+      message:
+        typeof nestedError.message === 'string'
+          ? nestedError.message
+          : `HTTP ${responseStatus}: ${responseStatusText || 'An error occurred'}`,
+      status: typeof nestedError.status === 'number' ? nestedError.status : responseStatus,
+      errors:
+        isRecord(nestedError.errors)
+          ? Object.fromEntries(
+              Object.entries(nestedError.errors).filter(
+                (entry): entry is [string, string[]] => Array.isArray(entry[1]) && entry[1].every((item) => typeof item === 'string'),
+              ),
+            )
+          : undefined,
+    };
+  }
+
+  return {
+    message:
+      isRecord(errorData) && typeof errorData.message === 'string'
+        ? errorData.message
+        : `HTTP ${responseStatus}: ${responseStatusText || 'An error occurred'}`,
+    status: responseStatus,
+  };
+};
+
 class ApiClient {
   private prepareBody(data?: unknown): BodyInit | undefined {
     if (data === undefined) {
@@ -75,7 +107,7 @@ class ApiClient {
 
       if (!response.ok) {
         const contentType = response.headers.get('content-type');
-        let errorData: any = null;
+        let errorData: unknown = null;
         
         try {
           if (contentType && contentType.includes('application/json')) {
@@ -89,10 +121,7 @@ class ApiClient {
           errorData = null;
         }
         
-        const error: ApiError = errorData?.error || {
-          message: errorData?.message || `HTTP ${response.status}: ${response.statusText || 'An error occurred'}`,
-          status: response.status,
-        };
+        const error = toApiError(response.status, response.statusText, errorData);
         
         console.error('API Error Response:', {
           url: response.url,
@@ -121,7 +150,10 @@ class ApiClient {
     }
   }
 
-  async get<T>(endpoint: string, params?: Record<string, any>): Promise<T> {
+  async get<T>(
+    endpoint: string,
+    params?: Record<string, string | number | boolean | null | undefined>,
+  ): Promise<T> {
     const sanitizedParams = params
       ? Object.entries(params).reduce((acc, [key, value]) => {
           if (value !== undefined && value !== null && value !== '') {
@@ -140,21 +172,21 @@ class ApiClient {
     });
   }
 
-  async post<T>(endpoint: string, data?: any): Promise<T> {
+  async post<T>(endpoint: string, data?: unknown): Promise<T> {
     return this.request<T>(endpoint, {
       method: 'POST',
       body: this.prepareBody(data),
     });
   }
 
-  async put<T>(endpoint: string, data?: any): Promise<T> {
+  async put<T>(endpoint: string, data?: unknown): Promise<T> {
     return this.request<T>(endpoint, {
       method: 'PUT',
       body: this.prepareBody(data),
     });
   }
 
-  async patch<T>(endpoint: string, data?: any): Promise<T> {
+  async patch<T>(endpoint: string, data?: unknown): Promise<T> {
     return this.request<T>(endpoint, {
       method: 'PATCH',
       body: this.prepareBody(data),

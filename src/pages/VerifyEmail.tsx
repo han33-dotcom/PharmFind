@@ -12,6 +12,23 @@ interface VerifyEmailResponse {
   success?: boolean;
 }
 
+const getErrorMessage = (error: unknown): string => {
+  if (typeof error === "object" && error !== null) {
+    if ("message" in error && typeof error.message === "string") {
+      return error.message;
+    }
+
+    if ("error" in error && typeof error.error === "object" && error.error !== null) {
+      const nestedError = error.error as { message?: unknown };
+      if (typeof nestedError.message === "string") {
+        return nestedError.message;
+      }
+    }
+  }
+
+  return "Failed to verify email";
+};
+
 const VerifyEmail = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -39,9 +56,9 @@ const VerifyEmail = () => {
         setTimeout(() => {
           navigate('/dashboard');
         }, 2000);
-      } catch (error: any) {
+      } catch (error: unknown) {
         setStatus('error');
-        const errorMessage = error?.error?.message || error?.message || 'Failed to verify email';
+        const errorMessage = getErrorMessage(error);
         setMessage(errorMessage);
         toast.error(errorMessage);
       }

@@ -10,6 +10,8 @@ import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
 import nodemailer from 'nodemailer';
 
+console.warn('[legacy-monolith] server/server.js is deprecated. Use server/microservices.js or the service-specific entrypoints instead.');
+
 // Import database - use PostgreSQL if DATABASE_URL is set, otherwise use JSON files
 let Database;
 if (process.env.DATABASE_URL) {

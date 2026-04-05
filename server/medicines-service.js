@@ -75,6 +75,16 @@ medicinesApp.get('/api/medicines/categories', async (req, res) => {
   }
 });
 
+medicinesApp.get('/api/medicines/catalog', async (req, res) => {
+  try {
+    const medicines = await MedicinesDatabase.getAllMedicines();
+    return res.json({ data: medicines.map(mapMedicine) });
+  } catch (error) {
+    console.error('Error fetching medicine catalog:', error);
+    return res.status(500).json({ error: { message: 'Internal server error', status: 500 } });
+  }
+});
+
 medicinesApp.get('/api/medicines/:id', async (req, res) => {
   try {
     const medicine = await MedicinesDatabase.findMedicineById(Number(req.params.id));

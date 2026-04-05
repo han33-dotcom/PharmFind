@@ -23,6 +23,14 @@ export interface AuthResponse {
   message?: string;
 }
 
+export interface UpdateCurrentUserData {
+  fullName?: string;
+  email?: string;
+  phone?: string;
+  currentPassword?: string;
+  newPassword?: string;
+}
+
 export class AuthService {
   private static notifyAuthChanged(): void {
     window.dispatchEvent(new Event("auth-change"));
@@ -114,6 +122,17 @@ export class AuthService {
     } catch (error) {
       return null;
     }
+  }
+
+  static async updateCurrentUser(data: UpdateCurrentUserData): Promise<{ user: User; message?: string }> {
+    const response = await apiClient.patch<{ user: User; message?: string }>('/auth/me', data);
+    this.notifyAuthChanged();
+    return response;
+  }
+
+  static async deleteCurrentUser(): Promise<void> {
+    await apiClient.delete<void>('/auth/me');
+    this.logout();
   }
 
   /**

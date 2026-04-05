@@ -3,7 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { ArrowLeft, Settings, LogOut, Home, Edit, Trash2, Plus, MapPin } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormDescription } from "@/components/ui/form";
@@ -15,6 +15,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import Logo from "@/components/Logo";
 import { useAddresses, Address } from "@/contexts/AddressContext";
+import { AuthService } from "@/services/auth.service";
+import { toast } from "sonner";
 
 const settingsSchema = z.object({
   // Account Info
@@ -62,6 +64,7 @@ const defaultValues: SettingsFormValues = {
 };
 
 const UserSettings = () => {
+  const navigate = useNavigate();
   const form = useForm<SettingsFormValues>({
     resolver: zodResolver(settingsSchema),
     defaultValues,
@@ -83,6 +86,16 @@ const UserSettings = () => {
     additionalDetails: "",
   });
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
+  const [showDeleteAccountDialog, setShowDeleteAccountDialog] = useState(false);
+  const [isSavingAccount, setIsSavingAccount] = useState(false);
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+
+  const getErrorMessage = (error: unknown, fallback: string) => {
+    if (typeof error === "object" && error !== null && "message" in error && typeof error.message === "string") {
+      return error.message;
+    }
+    return fallback;
+  };
 
   // Address handler functions
   const handleEditAddress = (address: Address) => {
@@ -133,7 +146,58 @@ const UserSettings = () => {
   };
 
   const handleLogout = () => {
-    window.location.href = "/";
+    AuthService.logout();
+    navigate("/");
+  };
+
+  const handleSaveAccount = async (values: SettingsFormValues) => {
+    if (values.newPassword || values.confirmPassword || values.currentPassword) {
+      if (values.newPassword !== values.confirmPassword) {
+        toast.error("New password and confirmation do not match.");
+        return;
+      }
+    }
+
+    setIsSavingAccount(true);
+    try {
+      const response = await AuthService.updateCurrentUser({
+        fullName: values.fullName,
+        email: values.email,
+        phone: values.phoneNumber,
+        currentPassword: values.currentPassword || undefined,
+        newPassword: values.newPassword || undefined,
+      });
+
+      form.reset({
+        ...form.getValues(),
+        fullName: response.user.fullName || values.fullName,
+        email: response.user.email || values.email,
+        phoneNumber: response.user.phone || values.phoneNumber,
+        currentPassword: "",
+        newPassword: "",
+        confirmPassword: "",
+      });
+
+      toast.success(response.message || "Account updated successfully.");
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Failed to update account settings."));
+    } finally {
+      setIsSavingAccount(false);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    setIsDeletingAccount(true);
+    try {
+      await AuthService.deleteCurrentUser();
+      toast.success("Your account has been deleted.");
+      navigate("/");
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Failed to delete your account."));
+    } finally {
+      setIsDeletingAccount(false);
+      setShowDeleteAccountDialog(false);
+    }
   };
 
   // Watch accessibility settings and apply visual changes
@@ -170,6 +234,26 @@ const UserSettings = () => {
       additionalDetails: "",
     });
   }, []);
+
+  useEffect(() => {
+    const loadCurrentUser = async () => {
+      try {
+        const user = await AuthService.getCurrentUser();
+        if (!user) return;
+
+        form.reset({
+          ...form.getValues(),
+          fullName: user.fullName || "",
+          email: user.email || "",
+          phoneNumber: user.phone || "",
+        });
+      } catch (error) {
+        console.error("Failed to load current user settings:", error);
+      }
+    };
+
+    void loadCurrentUser();
+  }, [form]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -326,8 +410,13 @@ const UserSettings = () => {
                       )}
                     />
 
-                    <div className="pt-4">
-                      <Button variant="destructive">Delete Account</Button>
+                    <div className="flex gap-3 pt-4">
+                      <Button onClick={form.handleSubmit(handleSaveAccount)} disabled={isSavingAccount}>
+                        {isSavingAccount ? "Saving..." : "Save Changes"}
+                      </Button>
+                      <Button variant="destructive" onClick={() => setShowDeleteAccountDialog(true)}>
+                        Delete Account
+                      </Button>
                     </div>
                   </CardContent>
                 </Card>
@@ -644,6 +733,27 @@ const UserSettings = () => {
               className="bg-primary hover:bg-primary/90"
             >
               Logout
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showDeleteAccountDialog} onOpenChange={setShowDeleteAccountDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Account</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently deletes your patient account and its saved addresses, favorites, orders, and prescriptions.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeletingAccount}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteAccount}
+              disabled={isDeletingAccount}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeletingAccount ? "Deleting..." : "Delete Account"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

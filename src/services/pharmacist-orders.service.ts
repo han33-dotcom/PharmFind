@@ -1,6 +1,7 @@
 import { apiClient } from "./api/client";
 import { Order } from "@/types";
 import { InventoryItem, PharmacistOrder } from "@/types/pharmacist.types";
+import { PrescriptionsService } from "./prescriptions.service";
 
 type PharmacistOrderResponse = Order & {
   patientName?: string;
@@ -17,7 +18,7 @@ const mapPharmacistOrder = (order: PharmacistOrderResponse): PharmacistOrder => 
     medicineName: item.medicineName,
     quantity: item.quantity,
     price: item.price,
-    requiresPrescription: Boolean(order.prescriptionId),
+    requiresPrescription: item.requiresPrescription ?? Boolean(order.prescriptionId),
   })),
   totalAmount: order.total,
   status:
@@ -32,7 +33,7 @@ const mapPharmacistOrder = (order: PharmacistOrderResponse): PharmacistOrder => 
             : order.status === "Delivered"
               ? "completed"
               : "rejected",
-  prescriptionRequired: Boolean(order.prescriptionId),
+  prescriptionRequired: order.items.some((item) => item.requiresPrescription) || Boolean(order.prescriptionId),
   prescriptionUrl: undefined,
   createdAt: order.createdAt,
   updatedAt: order.statusHistory.at(-1)?.timestamp || order.createdAt,
@@ -48,7 +49,14 @@ export class PharmacistOrdersService {
 
   static async getOrderById(orderId: string): Promise<PharmacistOrder | undefined> {
     const order = await apiClient.get<PharmacistOrderResponse>(`/orders/pharmacist/${orderId}`);
-    return mapPharmacistOrder(order);
+    const mappedOrder = mapPharmacistOrder(order);
+
+    if (mappedOrder.prescriptionRequired) {
+      const prescriptions = await PrescriptionsService.getPrescriptionsByOrderId(orderId);
+      mappedOrder.prescriptionUrl = prescriptions[0]?.fileUrl;
+    }
+
+    return mappedOrder;
   }
 
   static async acceptOrder(orderId: string): Promise<PharmacistOrder> {
@@ -77,5 +85,13 @@ export class PharmacistOrdersService {
       stockStatus: isAvailable ? "In Stock" : "Out of Stock",
       quantity: isAvailable ? Math.max(item.minStockLevel, item.stockLevel || item.minStockLevel) : 0,
     });
+  }
+
+  static async addInventoryItem(data: {
+    medicineId: number;
+    price: number;
+    quantity: number;
+  }): Promise<InventoryItem> {
+    return apiClient.post<InventoryItem>("/pharmacies/me/inventory", data);
   }
 }

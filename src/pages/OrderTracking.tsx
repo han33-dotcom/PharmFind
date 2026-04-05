@@ -12,17 +12,9 @@ import { useFavorites } from "@/contexts/FavoritesContext";
 import { OrderStatusBadge } from "@/components/OrderStatusBadge";
 import { format } from "date-fns";
 import { MockOrderControls } from "@/components/MockOrderControls";
+import { usePharmacyDetails } from "@/hooks/usePharmacyDetails";
 import { toast } from "@/hooks/use-toast";
 import { OrderStatus } from "@/types";
-
-const pharmacyDetails: Record<string, { id: number; name: string; address: string; phone: string }> = {
-  "1": { id: 1, name: "Habib Pharmacy", address: "Hamra Street, Beirut", phone: "+961 1 340555" },
-  "2": { id: 2, name: "Wardieh Pharmacy", address: "Achrafieh, Beirut", phone: "+961 1 200300" },
-  "3": { id: 3, name: "Raouche Pharmacy", address: "Raouche, Beirut", phone: "+961 1 789456" },
-  "4": { id: 4, name: "Verdun Pharmacy", address: "Verdun Street, Beirut", phone: "+961 1 456789" },
-  "5": { id: 5, name: "Mazraa Pharmacy", address: "Mazraa, Beirut", phone: "+961 1 654321" },
-  "6": { id: 6, name: "Clemenceau Pharmacy", address: "Clemenceau Street, Beirut", phone: "+961 1 987654" },
-};
 
 const timeSlotLabels: Record<string, string> = {
   morning: "Morning (9 AM - 12 PM)",
@@ -41,6 +33,9 @@ const OrderTracking = () => {
   const { addFavorite, isFavorite } = useFavorites();
 
   const order = orderId ? getOrder(orderId) : undefined;
+  const pharmacyDetails = usePharmacyDetails(
+    order ? Object.keys(order.itemsByPharmacy).map((pharmacyId) => Number(pharmacyId)) : [],
+  );
 
   useEffect(() => {
     if (orderId && !order) {
@@ -88,6 +83,7 @@ const OrderTracking = () => {
           price: item.price,
           quantity: item.quantity,
           type: item.type,
+          requiresPrescription: item.requiresPrescription,
           stockStatus: "In Stock",
         },
         item.quantity
@@ -113,10 +109,11 @@ const OrderTracking = () => {
         pharmacyName: item.pharmacyName,
         price: item.price,
         quantity: item.quantity,
-        type: item.type,
-        stockStatus: "In Stock",
-      },
-      item.quantity
+          type: item.type,
+          requiresPrescription: item.requiresPrescription,
+          stockStatus: "In Stock",
+        },
+        item.quantity
     );
 
     toast({

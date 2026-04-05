@@ -21,6 +21,8 @@ const DB_FILES = {
   addresses: path.join(DB_DIR, 'addresses.json'),
   favorites: path.join(DB_DIR, 'favorites.json'),
   emailVerifications: path.join(DB_DIR, 'email_verifications.json'),
+  passwordResets: path.join(DB_DIR, 'password_resets.json'),
+  prescriptions: path.join(DB_DIR, 'prescriptions.json'),
 };
 
 // Ensure data directory exists
@@ -96,6 +98,32 @@ class Database {
     return users[index];
   }
 
+  static deleteUser(id) {
+    const users = this.read('users');
+    const existingUser = users.find((user) => user.id === id);
+    if (!existingUser) return false;
+
+    this.write('users', users.filter((user) => user.id !== id));
+    this.write('addresses', this.read('addresses').filter((address) => address.userId !== id));
+    this.write('favorites', this.read('favorites').filter((favorite) => favorite.userId !== id));
+    this.write('orders', this.read('orders').filter((order) => order.userId !== id));
+    this.write('emailVerifications', this.read('emailVerifications').filter((verification) => verification.userId !== id));
+    this.write('passwordResets', this.read('passwordResets').filter((reset) => reset.userId !== id));
+    this.write('prescriptions', this.read('prescriptions').filter((prescription) => prescription.userId !== id));
+
+    const pharmacies = this.read('pharmacies');
+    const ownedPharmacies = pharmacies.filter((pharmacy) => pharmacy.ownerUserId === id).map((pharmacy) => pharmacy.id);
+    if (ownedPharmacies.length > 0) {
+      this.write('pharmacies', pharmacies.filter((pharmacy) => pharmacy.ownerUserId !== id));
+      this.write(
+        'pharmacyInventory',
+        this.read('pharmacyInventory').filter((item) => !ownedPharmacies.includes(Number(item.pharmacyId))),
+      );
+    }
+
+    return true;
+  }
+
   // Email verification operations
   static createVerificationToken(userId, token) {
     const verifications = this.read('emailVerifications');
@@ -123,6 +151,66 @@ class Database {
     const verifications = this.read('emailVerifications');
     const filtered = verifications.filter(v => v.token !== token);
     this.write('emailVerifications', filtered);
+    return true;
+  }
+
+  static createPasswordResetToken(userId, token) {
+    const resets = this.read('passwordResets');
+    const filtered = resets.filter((item) => item.userId !== userId);
+    const reset = {
+      userId,
+      token,
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    };
+    filtered.push(reset);
+    this.write('passwordResets', filtered);
+    return reset;
+  }
+
+  static findPasswordResetToken(token) {
+    const resets = this.read('passwordResets');
+    return resets.find((item) => item.token === token);
+  }
+
+  static deletePasswordResetToken(token) {
+    const resets = this.read('passwordResets');
+    const filtered = resets.filter((item) => item.token !== token);
+    this.write('passwordResets', filtered);
+    return true;
+  }
+
+  static createPrescription(prescription) {
+    const prescriptions = this.read('prescriptions');
+    prescriptions.push(prescription);
+    this.write('prescriptions', prescriptions);
+    return prescription;
+  }
+
+  static findPrescriptionById(id) {
+    const prescriptions = this.read('prescriptions');
+    return prescriptions.find((item) => item.id === id);
+  }
+
+  static updatePrescription(id, updates) {
+    const prescriptions = this.read('prescriptions');
+    const index = prescriptions.findIndex((item) => item.id === id);
+    if (index === -1) return null;
+
+    prescriptions[index] = { ...prescriptions[index], ...updates };
+    this.write('prescriptions', prescriptions);
+    return prescriptions[index];
+  }
+
+  static getPrescriptionsByOrderId(orderId) {
+    const prescriptions = this.read('prescriptions');
+    return prescriptions.filter((item) => item.orderId === orderId);
+  }
+
+  static deletePrescription(id) {
+    const prescriptions = this.read('prescriptions');
+    const filtered = prescriptions.filter((item) => item.id !== id);
+    this.write('prescriptions', filtered);
     return true;
   }
 
@@ -248,6 +336,30 @@ class Database {
 
     this.write('pharmacyInventory', inventory);
     return inventory[index];
+  }
+
+  static createInventoryItem(item) {
+    const inventory = this.read('pharmacyInventory');
+    const exists = inventory.some(
+      (entry) =>
+        Number(entry.pharmacyId) === Number(item.pharmacyId) &&
+        Number(entry.medicineId) === Number(item.medicineId)
+    );
+
+    if (exists) return null;
+
+    const newItem = {
+      pharmacyId: Number(item.pharmacyId),
+      medicineId: Number(item.medicineId),
+      price: Number(item.price),
+      quantity: Number(item.quantity ?? 0),
+      stockStatus: item.stockStatus || 'In Stock',
+      lastUpdated: new Date().toISOString(),
+    };
+
+    inventory.push(newItem);
+    this.write('pharmacyInventory', inventory);
+    return newItem;
   }
 
   static getMedicinesByPharmacy(pharmacyId) {

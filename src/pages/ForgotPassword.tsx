@@ -7,6 +7,7 @@ import { ArrowLeft, Mail } from "lucide-react";
 import { Link } from "react-router-dom";
 import Logo from "@/components/Logo";
 import { toast } from "sonner";
+import { apiClient } from "@/services/api/client";
 
 const ForgotPassword = () => {
   const [email, setEmail] = useState("");
@@ -16,13 +17,20 @@ const ForgotPassword = () => {
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    
-    // Password reset logic will be implemented later
-    setTimeout(() => {
-      setIsLoading(false);
+
+    try {
+      const response = await apiClient.post<{ message?: string }>("/auth/forgot-password", { email });
       setEmailSent(true);
-      toast.success("Password reset link sent to your email!");
-    }, 1000);
+      toast.success(response.message || "Password reset link sent to your email!");
+    } catch (error: unknown) {
+      const message =
+        typeof error === "object" && error && "message" in error
+          ? String((error as { message?: string }).message || "Failed to send reset link")
+          : "Failed to send reset link";
+      toast.error(message);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (

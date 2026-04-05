@@ -10,6 +10,7 @@ export interface CartItem {
   price: number;
   quantity: number;
   type: 'delivery' | 'reservation';
+  requiresPrescription: boolean;
   stockStatus: string;
   addedAt: number;
 }

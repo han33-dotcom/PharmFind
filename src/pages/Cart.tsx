@@ -24,22 +24,14 @@ import { ChevronDown, Pill } from "lucide-react";
 import Logo from "@/components/Logo";
 import { CartIcon } from "@/components/CartIcon";
 import { useCart } from "@/contexts/CartContext";
+import { usePharmacyDetails } from "@/hooks/usePharmacyDetails";
 import { toast } from "@/hooks/use-toast";
-
-// Import pharmacy details from PharmacyStore
-const pharmacyDetails: Record<string, any> = {
-  "1": { id: 1, name: "Habib Pharmacy", address: "Hamra Street, Beirut", phone: "+961 1 340555" },
-  "2": { id: 2, name: "Wardieh Pharmacy", address: "Achrafieh, Beirut", phone: "+961 1 200300" },
-  "3": { id: 3, name: "Raouche Pharmacy", address: "Raouche, Beirut", phone: "+961 1 789456" },
-  "4": { id: 4, name: "Verdun Pharmacy", address: "Verdun Street, Beirut", phone: "+961 1 456789" },
-  "5": { id: 5, name: "Mazraa Pharmacy", address: "Mazraa, Beirut", phone: "+961 1 654321" },
-  "6": { id: 6, name: "Clemenceau Pharmacy", address: "Clemenceau Street, Beirut", phone: "+961 1 987654" },
-};
 
 const Cart = () => {
   const navigate = useNavigate();
   const { cartItems, removeFromCart, updateQuantity, clearCart, getItemsByPharmacy } = useCart();
   const itemsByPharmacy = getItemsByPharmacy();
+  const pharmacyDetails = usePharmacyDetails(cartItems.map((item) => item.pharmacyId));
 
   const subtotal = cartItems.reduce((total, item) => total + item.price * item.quantity, 0);
   const deliveryPharmacies = new Set(
@@ -135,7 +127,12 @@ const Cart = () => {
           {/* Cart Items */}
           <div className="lg:col-span-2 space-y-4">
             {Object.entries(itemsByPharmacy).map(([pharmacyId, items]) => {
-              const pharmacy = pharmacyDetails[pharmacyId];
+              const pharmacy = pharmacyDetails[Number(pharmacyId)] ?? {
+                id: Number(pharmacyId),
+                name: items[0]?.pharmacyName || `Pharmacy ${pharmacyId}`,
+                address: "Address unavailable",
+                phone: "Phone unavailable",
+              };
               const hasDelivery = items.some((item) => item.type === 'delivery');
               const hasReservation = items.some((item) => item.type === 'reservation');
               const pharmacySubtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);

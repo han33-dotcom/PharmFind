@@ -13,6 +13,7 @@ export const API_CONFIG = {
   ordersBaseURL: import.meta.env.VITE_ORDERS_API_URL || 'http://localhost:4003/api',
   addressesBaseURL: import.meta.env.VITE_ADDRESSES_API_URL || 'http://localhost:4004/api',
   favoritesBaseURL: import.meta.env.VITE_FAVORITES_API_URL || 'http://localhost:4005/api',
+  prescriptionsBaseURL: import.meta.env.VITE_PRESCRIPTIONS_API_URL || 'http://localhost:4006/api',
   
   // Request timeout in milliseconds
   timeout: Number(import.meta.env.VITE_API_TIMEOUT) || 30000,
@@ -34,6 +35,7 @@ const getServiceBaseUrl = (endpoint: string): string => {
   if (endpoint.startsWith('/orders')) return API_CONFIG.ordersBaseURL;
   if (endpoint.startsWith('/users/me/addresses')) return API_CONFIG.addressesBaseURL;
   if (endpoint.startsWith('/users/me/favorites')) return API_CONFIG.favoritesBaseURL;
+  if (endpoint.startsWith('/prescriptions')) return API_CONFIG.prescriptionsBaseURL;
   return API_CONFIG.baseURL;
 };
 

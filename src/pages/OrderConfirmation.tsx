@@ -7,15 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import Logo from "@/components/Logo";
 import { useOrders } from "@/contexts/OrdersContext";
-
-const pharmacyDetails: Record<string, { id: number; name: string; address: string; phone: string }> = {
-  "1": { id: 1, name: "Habib Pharmacy", address: "Hamra Street, Beirut", phone: "+961 1 340555" },
-  "2": { id: 2, name: "Wardieh Pharmacy", address: "Achrafieh, Beirut", phone: "+961 1 200300" },
-  "3": { id: 3, name: "Raouche Pharmacy", address: "Raouche, Beirut", phone: "+961 1 789456" },
-  "4": { id: 4, name: "Verdun Pharmacy", address: "Verdun Street, Beirut", phone: "+961 1 456789" },
-  "5": { id: 5, name: "Mazraa Pharmacy", address: "Mazraa, Beirut", phone: "+961 1 654321" },
-  "6": { id: 6, name: "Clemenceau Pharmacy", address: "Clemenceau Street, Beirut", phone: "+961 1 987654" },
-};
+import { usePharmacyDetails } from "@/hooks/usePharmacyDetails";
 
 const timeSlotLabels: Record<string, string> = {
   morning: "Morning (9 AM - 12 PM)",
@@ -29,6 +21,9 @@ const OrderConfirmation = () => {
   const orderId = searchParams.get("orderId");
   const { getOrder, isLoading, refreshOrders } = useOrders();
   const orderData = orderId ? getOrder(orderId) : undefined;
+  const pharmacyDetails = usePharmacyDetails(
+    orderData ? Object.keys(orderData.itemsByPharmacy).map((pharmacyId) => Number(pharmacyId)) : [],
+  );
 
   useEffect(() => {
     if (!orderId) {

@@ -14,6 +14,7 @@ export interface OrderItem {
   quantity: number;
   price: number;
   type: "delivery" | "reservation";
+  requiresPrescription: boolean;
 }
 
 export interface OrderStatusHistoryEntry {

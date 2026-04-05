@@ -76,6 +76,9 @@ const sendAuthEmail = async (to, subject, html) => {
   }
 };
 
+const getApiErrorMessage = (error, fallback = 'Internal server error') =>
+  error instanceof Error ? error.message : fallback;
+
 authApp.post('/api/auth/register', async (req, res) => {
   try {
     const email = normalizeEmail(req.body.email);
@@ -240,6 +243,127 @@ authApp.get('/api/auth/me', authenticateToken, async (req, res) => {
   }
 });
 
+authApp.patch('/api/auth/me', authenticateToken, async (req, res) => {
+  try {
+    const user = await AuthDatabase.findUserById(req.user.userId);
+    if (!user) {
+      return res.status(404).json({
+        error: { message: 'User not found', status: 404 },
+      });
+    }
+
+    const updates = {};
+    const fullName = req.body.fullName?.trim();
+    const email = req.body.email ? normalizeEmail(req.body.email) : undefined;
+    const phone = req.body.phone ? normalizePhone(req.body.phone) : undefined;
+    const currentPassword = req.body.currentPassword;
+    const newPassword = req.body.newPassword;
+
+    if (fullName !== undefined) {
+      if (!fullName) {
+        return res.status(400).json({ error: { message: 'Full name cannot be empty', status: 400 } });
+      }
+      updates.fullName = fullName;
+    }
+
+    if (email !== undefined && email !== user.email) {
+      const existingEmailUser = await AuthDatabase.findUserByEmail(email);
+      if (existingEmailUser && existingEmailUser.id !== user.id) {
+        return res.status(409).json({ error: { message: 'Email is already in use', status: 409 } });
+      }
+      updates.email = email;
+      updates.emailVerified = false;
+    }
+
+    if (phone !== undefined && phone !== user.phone) {
+      const existingPhoneUser = await AuthDatabase.findUserByPhone(phone);
+      if (existingPhoneUser && existingPhoneUser.id !== user.id) {
+        return res.status(409).json({ error: { message: 'Phone number is already in use', status: 409 } });
+      }
+      updates.phone = phone;
+    }
+
+    if (currentPassword || newPassword) {
+      if (!currentPassword || !newPassword) {
+        return res.status(400).json({
+          error: { message: 'Current password and new password are both required to change your password', status: 400 },
+        });
+      }
+
+      if (newPassword.length < 8) {
+        return res.status(400).json({
+          error: { message: 'New password must be at least 8 characters long', status: 400 },
+        });
+      }
+
+      const validPassword = await bcrypt.compare(currentPassword, user.passwordHash);
+      if (!validPassword) {
+        return res.status(401).json({
+          error: { message: 'Current password is incorrect', status: 401 },
+        });
+      }
+
+      updates.passwordHash = await bcrypt.hash(newPassword, 10);
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({
+        error: { message: 'No valid updates provided', status: 400 },
+      });
+    }
+
+    const updatedUser = await AuthDatabase.updateUser(user.id, updates);
+
+    if (updates.email && updatedUser) {
+      const verificationToken = uuidv4();
+      await AuthDatabase.createVerificationToken(updatedUser.id, verificationToken);
+      const verificationLink = `${AUTH_FRONTEND_URL}/verify-email?token=${verificationToken}`;
+      await sendAuthEmail(
+        updatedUser.email,
+        'Verify your updated PharmFind email',
+        `<p>Hi ${updatedUser.fullName},</p><p>Please verify your updated email address:</p><p><a href="${verificationLink}">${verificationLink}</a></p>`,
+      );
+    }
+
+    return res.json({
+      user: toPublicUser(updatedUser),
+      message: updates.email
+        ? 'Account updated successfully. Please verify your new email address.'
+        : 'Account updated successfully.',
+    });
+  } catch (error) {
+    console.error('Update account error:', error);
+    return res.status(500).json({
+      error: { message: getApiErrorMessage(error), status: 500 },
+    });
+  }
+});
+
+authApp.delete('/api/auth/me', authenticateToken, async (req, res) => {
+  try {
+    const user = await AuthDatabase.findUserById(req.user.userId);
+    if (!user) {
+      return res.status(404).json({
+        error: { message: 'User not found', status: 404 },
+      });
+    }
+
+    if (user.role !== 'patient') {
+      return res.status(409).json({
+        error: { message: 'Account deletion is only available for patient accounts right now', status: 409 },
+      });
+    }
+
+    await AuthDatabase.deleteUser(user.id);
+    return res.status(204).send();
+  } catch (error) {
+    console.error('Delete account error:', error);
+    return res.status(500).json({
+      error: { message: getApiErrorMessage(error), status: 500 },
+    });
+  }
+});
+
 authApp.get('/api/auth/verify-email', async (req, res) => {
   try {
     const { token } = req.query;
@@ -351,6 +475,87 @@ authApp.post('/api/auth/resend-verification', authenticateToken, async (req, res
     });
   } catch (error) {
     console.error('Resend verification error:', error);
+    return res.status(500).json({
+      error: { message: 'Internal server error', status: 500 },
+    });
+  }
+});
+
+authApp.post('/api/auth/forgot-password', async (req, res) => {
+  try {
+    const email = normalizeEmail(req.body.email);
+    if (!email) {
+      return res.status(400).json({
+        error: { message: 'Email is required', status: 400 },
+      });
+    }
+
+    const user = await AuthDatabase.findUserByEmail(email);
+    if (user) {
+      const resetToken = uuidv4();
+      await AuthDatabase.createPasswordResetToken(user.id, resetToken);
+
+      const resetLink = `${AUTH_FRONTEND_URL}/reset-password?token=${resetToken}`;
+      const emailHtml = `
+        <p>Hi ${user.fullName},</p>
+        <p>Use the link below to reset your PharmFind password:</p>
+        <p><a href="${resetLink}">${resetLink}</a></p>
+        <p>This link expires in 1 hour.</p>
+      `;
+
+      await sendAuthEmail(user.email, 'Reset your PharmFind password', emailHtml);
+    }
+
+    return res.json({
+      success: true,
+      message: 'If an account exists for that email, a password reset link has been sent.',
+    });
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    return res.status(500).json({
+      error: { message: 'Internal server error', status: 500 },
+    });
+  }
+});
+
+authApp.post('/api/auth/reset-password', async (req, res) => {
+  try {
+    const token = req.body.token;
+    const password = req.body.password;
+
+    if (!token || !password) {
+      return res.status(400).json({
+        error: { message: 'Token and password are required', status: 400 },
+      });
+    }
+
+    const reset = await AuthDatabase.findPasswordResetToken(token);
+    if (!reset || new Date(reset.expiresAt) < new Date()) {
+      if (reset) {
+        await AuthDatabase.deletePasswordResetToken(token);
+      }
+      return res.status(400).json({
+        error: { message: 'Invalid or expired reset token', status: 400 },
+      });
+    }
+
+    const user = await AuthDatabase.findUserById(reset.userId);
+    if (!user) {
+      return res.status(404).json({
+        error: { message: 'User not found', status: 404 },
+      });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+    await AuthDatabase.updateUser(user.id, { passwordHash });
+    await AuthDatabase.deletePasswordResetToken(token);
+
+    return res.json({
+      success: true,
+      message: 'Password reset successfully.',
+    });
+  } catch (error) {
+    console.error('Reset password error:', error);
     return res.status(500).json({
       error: { message: 'Internal server error', status: 500 },
     });

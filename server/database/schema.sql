@@ -97,6 +97,7 @@ CREATE TABLE IF NOT EXISTS orders (
     order_number VARCHAR(50) UNIQUE NOT NULL,
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     status VARCHAR(50) NOT NULL DEFAULT 'Pending',
+    prescription_id UUID,
     driver_id UUID REFERENCES users(id) ON DELETE SET NULL,
     driver_name VARCHAR(255),
     assigned_at TIMESTAMP,
@@ -115,6 +116,7 @@ CREATE TABLE IF NOT EXISTS orders (
     ))
 );
 
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS prescription_id UUID;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS driver_id UUID REFERENCES users(id) ON DELETE SET NULL;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS driver_name VARCHAR(255);
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS assigned_at TIMESTAMP;
@@ -137,9 +139,11 @@ CREATE TABLE IF NOT EXISTS order_items (
     quantity INTEGER NOT NULL CHECK (quantity > 0),
     price DECIMAL(10,2) NOT NULL,
     type VARCHAR(20) NOT NULL,
+    requires_prescription BOOLEAN DEFAULT FALSE,
     CONSTRAINT check_order_type CHECK (type IN ('delivery', 'reservation'))
 );
 
+ALTER TABLE order_items ADD COLUMN IF NOT EXISTS requires_prescription BOOLEAN DEFAULT FALSE;
 CREATE INDEX IF NOT EXISTS idx_order_items_order ON order_items(order_id);
 CREATE INDEX IF NOT EXISTS idx_order_items_medicine ON order_items(medicine_id);
 CREATE INDEX IF NOT EXISTS idx_order_items_pharmacy ON order_items(pharmacy_id);
@@ -199,6 +203,36 @@ CREATE TABLE IF NOT EXISTS email_verifications (
 
 CREATE INDEX IF NOT EXISTS idx_email_verifications_token ON email_verifications(token);
 CREATE INDEX IF NOT EXISTS idx_email_verifications_user ON email_verifications(user_id);
+
+CREATE TABLE IF NOT EXISTS password_resets (
+    id SERIAL PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token VARCHAR(255) UNIQUE NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW(),
+    expires_at TIMESTAMP NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_password_resets_token ON password_resets(token);
+CREATE INDEX IF NOT EXISTS idx_password_resets_user ON password_resets(user_id);
+
+CREATE TABLE IF NOT EXISTS prescriptions (
+    id UUID PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    order_id UUID,
+    file_url TEXT NOT NULL,
+    file_name VARCHAR(255) NOT NULL,
+    file_type VARCHAR(100) NOT NULL,
+    file_size BIGINT NOT NULL,
+    uploaded_at TIMESTAMP DEFAULT NOW(),
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    reviewed_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    reviewed_at TIMESTAMP,
+    rejection_reason TEXT,
+    CONSTRAINT check_prescription_status CHECK (status IN ('pending', 'approved', 'rejected'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_prescriptions_user ON prescriptions(user_id);
+CREATE INDEX IF NOT EXISTS idx_prescriptions_order ON prescriptions(order_id);
 
 -- ==================== Triggers ====================
 -- Auto-update updated_at timestamp

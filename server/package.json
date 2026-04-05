@@ -5,15 +5,17 @@
   "type": "module",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node --watch server.js",
+    "start": "node microservices.js",
+    "dev": "node microservices.js",
+    "start:legacy-monolith": "node server.js",
     "setup-db": "node database/setup.js",
     "start:auth": "node auth-service.js",
     "start:medicines": "node medicines-service.js",
     "start:pharmacies": "node pharmacies-service.js",
     "start:orders": "node orders-service.js",
     "start:addresses": "node addresses-service.js",
-    "start:favorites": "node favorites-service.js"
+    "start:favorites": "node favorites-service.js",
+    "start:prescriptions": "node prescriptions-service.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

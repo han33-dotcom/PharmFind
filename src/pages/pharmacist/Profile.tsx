@@ -14,9 +14,18 @@ import { AuthService } from '@/services/auth.service';
 
 const Profile = () => {
   const [pharmacy, setPharmacy] = useState<Pharmacy | null>(null);
+  const [originalPharmacy, setOriginalPharmacy] = useState<Pharmacy | null>(null);
   const [user, setUser] = useState<{ email: string } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const getErrorMessage = (error: unknown, fallback: string) => {
+    if (typeof error === 'object' && error !== null && 'message' in error && typeof error.message === 'string') {
+      return error.message;
+    }
+    return fallback;
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -26,36 +35,50 @@ const Profile = () => {
           PharmaciesService.getMyPharmacy(),
           AuthService.getCurrentUser(),
         ]);
-        console.log('Fetched pharmacy data:', pharmacyData);
-        console.log('Fetched user data:', userData);
         setPharmacy(pharmacyData);
+        setOriginalPharmacy(pharmacyData);
         setUser(userData);
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error('Failed to fetch pharmacy data:', error);
-        if (error?.status === 404) {
+        if (typeof error === 'object' && error !== null && 'status' in error && error.status === 404) {
           // No pharmacy registered yet - this is okay
           setPharmacy(null);
         } else {
-          toast.error('Failed to load pharmacy information: ' + (error?.error?.message || error?.message || 'Unknown error'));
+          toast.error(getErrorMessage(error, 'Failed to load pharmacy information.'));
         }
       } finally {
         setIsLoading(false);
       }
     };
 
-    fetchData();
+    void fetchData();
   }, []);
 
   const handleSave = async () => {
     if (!pharmacy) return;
     
     try {
-      // TODO: Implement pharmacy update endpoint
+      setIsSaving(true);
+      const updatedPharmacy = await PharmaciesService.updateMyPharmacy({
+        name: pharmacy.name,
+        address: pharmacy.address,
+        phone: pharmacy.phone,
+        hours: pharmacy.hours,
+      });
+      setPharmacy(updatedPharmacy);
+      setOriginalPharmacy(updatedPharmacy);
       toast.success('Profile updated successfully');
       setIsEditing(false);
-    } catch (error) {
-      toast.error('Failed to update profile');
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Failed to update profile.'));
+    } finally {
+      setIsSaving(false);
     }
+  };
+
+  const handleCancel = () => {
+    setPharmacy(originalPharmacy);
+    setIsEditing(false);
   };
 
   const getStatusBadge = () => {
@@ -132,12 +155,12 @@ const Profile = () => {
                 </Button>
               ) : (
                 <div className="flex gap-2">
-                  <Button variant="outline" onClick={() => setIsEditing(false)}>
+                  <Button variant="outline" onClick={handleCancel} disabled={isSaving}>
                     Cancel
                   </Button>
-                  <Button onClick={handleSave}>
+                  <Button onClick={handleSave} disabled={isSaving}>
                     <Save className="mr-2 h-4 w-4" />
-                    Save Changes
+                    {isSaving ? 'Saving...' : 'Save Changes'}
                   </Button>
                 </div>
               )}
@@ -214,15 +237,50 @@ const Profile = () => {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="hours" className="flex items-center gap-2">
+              <Label className="flex items-center gap-2">
                 <Clock className="h-4 w-4 text-muted-foreground" />
                 Operating Hours
               </Label>
-              <Input
-                id="hours"
-                value={operatingHours}
-                disabled={!isEditing}
-              />
+              <div className="grid gap-4 md:grid-cols-2">
+                <Input
+                  id="hours-open"
+                  value={pharmacy.hours?.open || ''}
+                  onChange={(e) =>
+                    setPharmacy((prev) =>
+                      prev
+                        ? {
+                            ...prev,
+                            hours: {
+                              open: e.target.value,
+                              close: prev.hours?.close || '',
+                            },
+                          }
+                        : null,
+                    )
+                  }
+                  disabled={!isEditing}
+                  placeholder={operatingHours}
+                />
+                <Input
+                  id="hours-close"
+                  value={pharmacy.hours?.close || ''}
+                  onChange={(e) =>
+                    setPharmacy((prev) =>
+                      prev
+                        ? {
+                            ...prev,
+                            hours: {
+                              open: prev.hours?.open || '',
+                              close: e.target.value,
+                            },
+                          }
+                        : null,
+                    )
+                  }
+                  disabled={!isEditing}
+                  placeholder={operatingHours}
+                />
+              </div>
             </div>
 
             {pharmacy.createdAt && (

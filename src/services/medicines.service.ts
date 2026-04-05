@@ -104,4 +104,13 @@ export class MedicinesService {
     const response = await apiClient.get<{ categories: string[] }>(`/medicines/categories`);
     return response.categories || [];
   }
+
+  static async getCatalog(): Promise<Medicine[]> {
+    if (API_CONFIG.useMockData) {
+      return mockMedicines;
+    }
+
+    const response = await apiClient.get<{ data: Medicine[] }>(`/medicines/catalog`);
+    return response.data || [];
+  }
 }

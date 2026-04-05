@@ -31,13 +31,12 @@ const mapPharmacy = (pharmacy) => ({
   latitude: pharmacy.latitude !== undefined && pharmacy.latitude !== null ? Number(pharmacy.latitude) : undefined,
   longitude: pharmacy.longitude !== undefined && pharmacy.longitude !== null ? Number(pharmacy.longitude) : undefined,
   hours:
-    pharmacy.hours ??
-    (formatTimeValue(pharmacy.hoursOpen ?? pharmacy.hours_open) || formatTimeValue(pharmacy.hoursClose ?? pharmacy.hours_close)
+    formatTimeValue(pharmacy.hoursOpen ?? pharmacy.hours_open) || formatTimeValue(pharmacy.hoursClose ?? pharmacy.hours_close)
       ? {
           open: formatTimeValue(pharmacy.hoursOpen ?? pharmacy.hours_open) ?? '',
           close: formatTimeValue(pharmacy.hoursClose ?? pharmacy.hours_close) ?? '',
         }
-      : undefined),
+      : pharmacy.hours,
   verified: Boolean(pharmacy.verified ?? false),
   verificationStatus: pharmacy.verificationStatus ?? (pharmacy.verified ? 'approved' : 'pending'),
   ownerUserId: pharmacy.ownerUserId ?? pharmacy.owner_user_id ?? undefined,
@@ -74,6 +73,12 @@ const mapInventoryItem = (item) => ({
   lastUpdated: item.lastUpdated ?? item.last_updated ?? new Date().toISOString(),
   stockStatus: item.stockStatus ?? item.stock_status ?? 'In Stock',
 });
+
+const deriveStockStatus = (quantity) => {
+  if (quantity <= 0) return 'Out of Stock';
+  if (quantity < 10) return 'Low Stock';
+  return 'In Stock';
+};
 
 const ensurePharmacistAccount = async (req, res) => {
   const user = await PharmDatabase.findUserById(req.user.userId);
@@ -177,6 +182,62 @@ pharmApp.get('/api/pharmacies/me', authenticateToken, async (req, res) => {
   }
 });
 
+pharmApp.patch('/api/pharmacies/me', authenticateToken, async (req, res) => {
+  try {
+    const pharmacy = await ensureOwnedPharmacy(req, res);
+    if (!pharmacy) return;
+
+    const updates = {};
+
+    if (req.body.name !== undefined) {
+      const name = req.body.name?.trim();
+      if (!name) {
+        return res.status(400).json({ error: { message: 'Pharmacy name cannot be empty', status: 400 } });
+      }
+      updates.name = name;
+    }
+
+    if (req.body.address !== undefined) {
+      const address = req.body.address?.trim();
+      if (!address) {
+        return res.status(400).json({ error: { message: 'Address cannot be empty', status: 400 } });
+      }
+      updates.address = address;
+    }
+
+    if (req.body.phone !== undefined) {
+      const phone = req.body.phone?.trim();
+      if (!phone) {
+        return res.status(400).json({ error: { message: 'Phone number cannot be empty', status: 400 } });
+      }
+      updates.phone = phone;
+    }
+
+    if (req.body.hours !== undefined) {
+      updates.hoursOpen = formatTimeValue(req.body.hours?.open) ?? null;
+      updates.hoursClose = formatTimeValue(req.body.hours?.close) ?? null;
+    }
+
+    if (req.body.baseDeliveryFee !== undefined) {
+      updates.baseDeliveryFee = Number(req.body.baseDeliveryFee);
+    }
+
+    if (req.body.isOpen !== undefined) {
+      updates.isOpen = Boolean(req.body.isOpen);
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ error: { message: 'No valid updates provided', status: 400 } });
+    }
+
+    const updatedPharmacy = await PharmDatabase.updatePharmacy(Number(pharmacy.id), updates);
+    return res.json(mapPharmacy(updatedPharmacy));
+  } catch (error) {
+    console.error('Error updating owned pharmacy:', error);
+    return res.status(500).json({ error: { message: 'Internal server error', status: 500 } });
+  }
+});
+
 pharmApp.get('/api/pharmacies/:id', async (req, res) => {
   try {
     const pharmacy = await PharmDatabase.findPharmacyById(Number(req.params.id));
@@ -270,6 +331,53 @@ pharmApp.patch('/api/pharmacies/me/inventory/:medicineId', authenticateToken, as
     return res.json(mapInventoryItem(fullItem ?? updatedItem));
   } catch (error) {
     console.error('Error updating owned pharmacy inventory:', error);
+    return res.status(500).json({ error: { message: 'Internal server error', status: 500 } });
+  }
+});
+
+pharmApp.post('/api/pharmacies/me/inventory', authenticateToken, async (req, res) => {
+  try {
+    const pharmacy = await ensureOwnedPharmacy(req, res);
+    if (!pharmacy) return;
+
+    const medicineId = Number(req.body.medicineId);
+    const price = Number(req.body.price);
+    const quantity = Number(req.body.quantity);
+
+    if (!Number.isFinite(medicineId) || !Number.isFinite(price) || !Number.isFinite(quantity)) {
+      return res.status(400).json({ error: { message: 'medicineId, price, and quantity are required', status: 400 } });
+    }
+
+    const medicine = await PharmDatabase.findMedicineById(medicineId);
+    if (!medicine) {
+      return res.status(404).json({ error: { message: 'Medicine not found', status: 404 } });
+    }
+
+    const existingInventory = await PharmDatabase.getInventoryByPharmacyId(Number(pharmacy.id));
+    const exists = existingInventory.some(
+      (item) => Number(item.medicineId ?? item.medicine_id ?? item.id) === medicineId
+    );
+
+    if (exists) {
+      return res.status(409).json({ error: { message: 'Medicine already exists in pharmacy inventory', status: 409 } });
+    }
+
+    await PharmDatabase.createInventoryItem({
+      pharmacyId: Number(pharmacy.id),
+      medicineId,
+      price,
+      quantity,
+      stockStatus: deriveStockStatus(quantity),
+    });
+
+    const refreshedInventory = await PharmDatabase.getInventoryByPharmacyId(Number(pharmacy.id));
+    const createdItem = refreshedInventory.find(
+      (item) => Number(item.medicineId ?? item.medicine_id ?? item.id) === medicineId
+    );
+
+    return res.status(201).json(mapInventoryItem(createdItem));
+  } catch (error) {
+    console.error('Error creating owned pharmacy inventory item:', error);
     return res.status(500).json({ error: { message: 'Internal server error', status: 500 } });
   }
 });

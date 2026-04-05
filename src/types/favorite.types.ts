@@ -8,4 +8,4 @@ export interface FavoriteMedicine {
   addedAt: string;
 }
 
-export interface CreateFavoriteData extends Omit<FavoriteMedicine, "addedAt"> {}
+export type CreateFavoriteData = Omit<FavoriteMedicine, "addedAt">;

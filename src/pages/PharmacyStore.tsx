@@ -131,6 +131,7 @@ const PharmacyStore = () => {
         price: Number(selectedMedicine.price),
         quantity,
         type: orderType,
+        requiresPrescription: selectedMedicine.requiresPrescription,
         stockStatus: selectedMedicine.stockStatus,
       },
       quantity,

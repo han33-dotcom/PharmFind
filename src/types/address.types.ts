@@ -11,4 +11,4 @@ export interface Address {
   additionalDetails: string;
 }
 
-export interface CreateAddressData extends Omit<Address, "id"> {}
+export type CreateAddressData = Omit<Address, "id">;

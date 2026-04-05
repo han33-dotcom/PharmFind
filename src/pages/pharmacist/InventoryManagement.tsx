@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import PharmacistLayout from '@/components/pharmacist/PharmacistLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import {
@@ -22,18 +23,30 @@ import {
 import { Search, AlertCircle, Package, Loader2 } from 'lucide-react';
 import { InventoryItem } from '@/types/pharmacist.types';
 import { PharmacistOrdersService } from '@/services/pharmacist-orders.service';
+import { MedicinesService } from '@/services/medicines.service';
+import { Medicine } from '@/types';
 import { toast } from 'sonner';
 
 const InventoryManagement = () => {
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  const [catalog, setCatalog] = useState<Medicine[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [isLoading, setIsLoading] = useState(true);
+  const [selectedMedicineId, setSelectedMedicineId] = useState<string>('');
+  const [newPrice, setNewPrice] = useState('');
+  const [newQuantity, setNewQuantity] = useState('');
+  const [isAdding, setIsAdding] = useState(false);
 
   useEffect(() => {
     const loadInventory = async () => {
       try {
-        setInventory(await PharmacistOrdersService.getInventory());
+        const [inventoryData, catalogData] = await Promise.all([
+          PharmacistOrdersService.getInventory(),
+          MedicinesService.getCatalog(),
+        ]);
+        setInventory(inventoryData);
+        setCatalog(catalogData);
       } catch (error) {
         console.error('Failed to load inventory:', error);
         toast.error('Failed to load inventory');
@@ -62,6 +75,14 @@ const InventoryManagement = () => {
     });
   }, [inventory, searchQuery, categoryFilter]);
 
+  const availableMedicinesToAdd = useMemo(() => {
+    const stockedMedicineIds = new Set(
+      inventory.map((item) => Number(item.medicineId ?? item.id))
+    );
+
+    return catalog.filter((medicine) => !stockedMedicineIds.has(medicine.id));
+  }, [catalog, inventory]);
+
   const toggleStock = async (itemId: string) => {
     const item = inventory.find((entry) => entry.id === itemId);
     if (!item) return;
@@ -79,6 +100,36 @@ const InventoryManagement = () => {
     } catch (error) {
       console.error('Failed to update inventory item:', error);
       toast.error('Failed to update inventory item');
+    }
+  };
+
+  const handleAddInventoryItem = async () => {
+    const medicineId = Number(selectedMedicineId);
+    const price = Number(newPrice);
+    const quantity = Number(newQuantity);
+
+    if (!Number.isFinite(medicineId) || !Number.isFinite(price) || !Number.isFinite(quantity)) {
+      toast.error('Select a medicine and enter valid price and quantity values');
+      return;
+    }
+
+    setIsAdding(true);
+    try {
+      const createdItem = await PharmacistOrdersService.addInventoryItem({
+        medicineId,
+        price,
+        quantity,
+      });
+      setInventory((previous) => [...previous, createdItem]);
+      setSelectedMedicineId('');
+      setNewPrice('');
+      setNewQuantity('');
+      toast.success(`${createdItem.medicineName} added to inventory`);
+    } catch (error) {
+      console.error('Failed to add inventory item:', error);
+      toast.error('Failed to add inventory item');
+    } finally {
+      setIsAdding(false);
     }
   };
 
@@ -110,6 +161,56 @@ const InventoryManagement = () => {
         <div className="flex items-center justify-between">
           <h1 className="text-3xl font-bold tracking-tight">Inventory Management</h1>
         </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Add Medicine</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-4 md:grid-cols-4">
+            <Select value={selectedMedicineId} onValueChange={setSelectedMedicineId}>
+              <SelectTrigger className="md:col-span-2">
+                <SelectValue placeholder="Select medicine" />
+              </SelectTrigger>
+              <SelectContent>
+                {availableMedicinesToAdd.map((medicine) => (
+                  <SelectItem key={medicine.id} value={String(medicine.id)}>
+                    {medicine.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Input
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="Price"
+              value={newPrice}
+              onChange={(event) => setNewPrice(event.target.value)}
+            />
+            <Input
+              type="number"
+              min="0"
+              step="1"
+              placeholder="Quantity"
+              value={newQuantity}
+              onChange={(event) => setNewQuantity(event.target.value)}
+            />
+            <div className="md:col-span-4 flex justify-end">
+              <Button
+                type="button"
+                onClick={() => void handleAddInventoryItem()}
+                disabled={isAdding || availableMedicinesToAdd.length === 0}
+              >
+                {isAdding ? 'Adding...' : 'Add Medicine'}
+              </Button>
+            </div>
+            {availableMedicinesToAdd.length === 0 && (
+              <p className="md:col-span-4 text-sm text-muted-foreground">
+                All medicines from the current catalog are already in this pharmacy inventory.
+              </p>
+            )}
+          </CardContent>
+        </Card>
 
         <div className="grid gap-4 md:grid-cols-3">
           <Card>
@@ -223,7 +324,9 @@ const InventoryManagement = () => {
                 {filteredInventory.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
-                      No medicines found
+                      {inventory.length === 0
+                        ? 'Your pharmacy has no inventory yet. Add your first medicine above.'
+                        : 'No medicines found'}
                     </TableCell>
                   </TableRow>
                 )}

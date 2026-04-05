@@ -9,6 +9,15 @@ import { API_CONFIG } from "./api/config";
 import { apiClient } from "./api/client";
 import { mockPharmacies } from "@/data/mock/pharmacies.mock";
 
+type PharmacyUpdatePayload = {
+  name?: string;
+  address?: string;
+  phone?: string;
+  hours?: { open: string; close: string };
+  baseDeliveryFee?: number;
+  isOpen?: boolean;
+};
+
 export class PharmaciesService {
   /**
    * Search pharmacies by location
@@ -93,12 +102,16 @@ export class PharmaciesService {
   static async getMyPharmacy(): Promise<Pharmacy | null> {
     try {
       return await apiClient.get<Pharmacy>(`/pharmacies/me`);
-    } catch (error: any) {
-      if (error?.status === 404) {
+    } catch (error: unknown) {
+      if (typeof error === "object" && error !== null && "status" in error && error.status === 404) {
         return null;
       }
       throw error;
     }
+  }
+
+  static async updateMyPharmacy(data: PharmacyUpdatePayload): Promise<Pharmacy> {
+    return apiClient.patch<Pharmacy>("/pharmacies/me", data);
   }
 
   /**
