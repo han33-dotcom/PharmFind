@@ -1,11 +1,12 @@
-import { ReactNode } from "react";
+import { ReactNode, useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Home, List, Truck, Clock, LogOut } from "lucide-react";
 import Logo from "@/components/Logo";
-import { useRole } from "@/contexts/RoleContext";
 import { Badge } from "@/components/ui/badge";
 import { DriverService } from "@/services/driver.service";
+import { AuthService } from "@/services/auth.service";
+import { DriverStats } from "@/types/driver.types";
 
 interface DriverLayoutProps {
   children: ReactNode;
@@ -14,13 +15,36 @@ interface DriverLayoutProps {
 const DriverLayout = ({ children }: DriverLayoutProps) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { setRole } = useRole();
-  const stats = DriverService.getDriverStats();
+  const [stats, setStats] = useState<DriverStats>({
+    todayDeliveries: 0,
+    todayEarnings: 0,
+    activeDelivery: null,
+    availableOrders: 0,
+  });
+
+  useEffect(() => {
+    const loadStats = async () => {
+      try {
+        setStats(await DriverService.getDriverStats());
+      } catch (error) {
+        console.error("Failed to load driver stats:", error);
+      }
+    };
+
+    void loadStats();
+
+    const handleAuthChanged = () => {
+      void loadStats();
+    };
+
+    window.addEventListener("auth-change", handleAuthChanged);
+    return () => {
+      window.removeEventListener("auth-change", handleAuthChanged);
+    };
+  }, []);
 
   const handleLogout = () => {
-    localStorage.removeItem("auth_token");
-    localStorage.removeItem("user");
-    setRole("patient");
+    AuthService.logout();
     navigate("/");
   };
 

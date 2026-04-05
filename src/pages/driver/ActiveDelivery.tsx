@@ -1,18 +1,45 @@
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import DriverLayout from "@/components/driver/DriverLayout";
 import { DriverService } from "@/services/driver.service";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { MapPin, Phone, Package, Navigation, CheckCircle } from "lucide-react";
+import { MapPin, Phone, Package, Navigation, CheckCircle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { AlertDialog, AlertDialogAction, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { useState } from "react";
+import { DeliveryOrder } from "@/types/driver.types";
 
 const ActiveDelivery = () => {
   const navigate = useNavigate();
-  const activeDelivery = DriverService.getMyActiveDelivery();
+  const [activeDelivery, setActiveDelivery] = useState<DeliveryOrder | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [showCompleteDialog, setShowCompleteDialog] = useState(false);
+
+  useEffect(() => {
+    const loadActiveDelivery = async () => {
+      try {
+        setActiveDelivery(await DriverService.getMyActiveDelivery());
+      } catch (error) {
+        console.error("Failed to load active delivery:", error);
+        toast.error("Failed to load active delivery");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    void loadActiveDelivery();
+  }, []);
+
+  if (isLoading) {
+    return (
+      <DriverLayout>
+        <div className="flex justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      </DriverLayout>
+    );
+  }
 
   if (!activeDelivery) {
     return (
@@ -31,21 +58,37 @@ const ActiveDelivery = () => {
     );
   }
 
-  const handlePickedUp = () => {
-    DriverService.startDelivery(activeDelivery.id);
-    toast.success("Marked as picked up from pharmacy");
-    window.location.reload();
+  const handlePickedUp = async () => {
+    try {
+      const updated = await DriverService.startDelivery(activeDelivery.id);
+      setActiveDelivery(updated);
+      toast.success("Marked as picked up from pharmacy");
+    } catch (error) {
+      console.error("Failed to update pickup status:", error);
+      toast.error("Failed to update pickup status");
+    }
   };
 
-  const handleInTransit = () => {
-    DriverService.markInTransit(activeDelivery.id);
-    toast.success("You're now in transit to customer");
-    window.location.reload();
+  const handleInTransit = async () => {
+    try {
+      const updated = await DriverService.markInTransit(activeDelivery.id);
+      setActiveDelivery(updated);
+      toast.success("You're now in transit to customer");
+    } catch (error) {
+      console.error("Failed to update delivery status:", error);
+      toast.error("Failed to update delivery status");
+    }
   };
 
-  const handleComplete = () => {
-    DriverService.completeDelivery(activeDelivery.id);
-    setShowCompleteDialog(true);
+  const handleComplete = async () => {
+    try {
+      const updated = await DriverService.completeDelivery(activeDelivery.id);
+      setActiveDelivery(updated);
+      setShowCompleteDialog(true);
+    } catch (error) {
+      console.error("Failed to complete delivery:", error);
+      toast.error("Failed to complete delivery");
+    }
   };
 
   const navigateToLocation = (lat: number, lng: number, label: string) => {

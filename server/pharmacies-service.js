@@ -61,12 +61,57 @@ const mapPharmacyMedicine = (medicine) => ({
   lastUpdated: medicine.lastUpdated ?? medicine.last_updated ?? new Date().toISOString(),
 });
 
+const mapInventoryItem = (item) => ({
+  id: String(item.medicineId ?? item.medicine_id ?? item.id),
+  medicineId: Number(item.medicineId ?? item.medicine_id ?? item.id),
+  medicineName: item.name,
+  scientificName: item.description ?? item.manufacturer ?? item.name,
+  category: item.category,
+  stockLevel: Number(item.quantity ?? (item.stockStatus === 'Out of Stock' ? 0 : item.stockStatus === 'Low Stock' ? 5 : 50)),
+  minStockLevel: Number(item.minStockLevel ?? 10),
+  price: Number(item.price ?? item.basePrice ?? item.base_price ?? 0),
+  expiryDate: item.expiryDate ?? '',
+  lastUpdated: item.lastUpdated ?? item.last_updated ?? new Date().toISOString(),
+  stockStatus: item.stockStatus ?? item.stock_status ?? 'In Stock',
+});
+
+const ensurePharmacistAccount = async (req, res) => {
+  const user = await PharmDatabase.findUserById(req.user.userId);
+  if (!user) {
+    res.status(404).json({ error: { message: 'User not found', status: 404 } });
+    return null;
+  }
+
+  if (user.role !== 'pharmacist') {
+    res.status(403).json({ error: { message: 'Only pharmacist accounts can access this endpoint', status: 403 } });
+    return null;
+  }
+
+  return user;
+};
+
+const ensureOwnedPharmacy = async (req, res) => {
+  const user = await ensurePharmacistAccount(req, res);
+  if (!user) return null;
+
+  const pharmacy = await PharmDatabase.findPharmacyByOwnerId(req.user.userId);
+  if (!pharmacy) {
+    res.status(404).json({ error: { message: 'No pharmacy found for this user', status: 404 } });
+    return null;
+  }
+
+  return pharmacy;
+};
+
 pharmApp.get('/api/health', (req, res) => {
   res.json({ status: 'ok', service: 'pharmacies', timestamp: new Date().toISOString() });
 });
 
 pharmApp.post('/api/pharmacies/register', authenticateToken, async (req, res) => {
   try {
+    const user = await ensurePharmacistAccount(req, res);
+    if (!user) return;
+
     const existingPharmacy = await PharmDatabase.findPharmacyByOwnerId(req.user.userId);
     if (existingPharmacy) {
       return res.status(409).json({
@@ -122,10 +167,8 @@ pharmApp.get('/api/pharmacies', async (req, res) => {
 
 pharmApp.get('/api/pharmacies/me', authenticateToken, async (req, res) => {
   try {
-    const pharmacy = await PharmDatabase.findPharmacyByOwnerId(req.user.userId);
-    if (!pharmacy) {
-      return res.status(404).json({ error: { message: 'No pharmacy found for this user', status: 404 } });
-    }
+    const pharmacy = await ensureOwnedPharmacy(req, res);
+    if (!pharmacy) return;
 
     return res.json(mapPharmacy(pharmacy));
   } catch (error) {
@@ -150,6 +193,9 @@ pharmApp.get('/api/pharmacies/:id', async (req, res) => {
 
 pharmApp.get('/api/pharmacies/:id/verification-status', authenticateToken, async (req, res) => {
   try {
+    const user = await ensurePharmacistAccount(req, res);
+    if (!user) return;
+
     const pharmacy = await PharmDatabase.findPharmacyById(Number(req.params.id));
     if (!pharmacy) {
       return res.status(404).json({ error: { message: 'Pharmacy not found', status: 404 } });
@@ -174,6 +220,56 @@ pharmApp.get('/api/pharmacies/:id/verification-status', authenticateToken, async
     });
   } catch (error) {
     console.error('Error fetching verification status:', error);
+    return res.status(500).json({ error: { message: 'Internal server error', status: 500 } });
+  }
+});
+
+pharmApp.get('/api/pharmacies/me/inventory', authenticateToken, async (req, res) => {
+  try {
+    const pharmacy = await ensureOwnedPharmacy(req, res);
+    if (!pharmacy) return;
+
+    const inventory = await PharmDatabase.getInventoryByPharmacyId(Number(pharmacy.id));
+    return res.json({ data: inventory.map(mapInventoryItem) });
+  } catch (error) {
+    console.error('Error fetching owned pharmacy inventory:', error);
+    return res.status(500).json({ error: { message: 'Internal server error', status: 500 } });
+  }
+});
+
+pharmApp.patch('/api/pharmacies/me/inventory/:medicineId', authenticateToken, async (req, res) => {
+  try {
+    const pharmacy = await ensureOwnedPharmacy(req, res);
+    if (!pharmacy) return;
+
+    const medicineId = Number(req.params.medicineId);
+    const updates = {};
+
+    if (req.body.price !== undefined) {
+      updates.price = Number(req.body.price);
+    }
+
+    if (req.body.stockStatus !== undefined) {
+      updates.stockStatus = req.body.stockStatus;
+    }
+
+    if (req.body.quantity !== undefined) {
+      updates.quantity = Number(req.body.quantity);
+    }
+
+    const updatedItem = await PharmDatabase.updateInventoryItem(Number(pharmacy.id), medicineId, updates);
+    if (!updatedItem) {
+      return res.status(404).json({ error: { message: 'Inventory item not found', status: 404 } });
+    }
+
+    const inventory = await PharmDatabase.getInventoryByPharmacyId(Number(pharmacy.id));
+    const fullItem = inventory.find(
+      (item) => Number(item.medicineId ?? item.medicine_id ?? item.id) === medicineId
+    );
+
+    return res.json(mapInventoryItem(fullItem ?? updatedItem));
+  } catch (error) {
+    console.error('Error updating owned pharmacy inventory:', error);
     return res.status(500).json({ error: { message: 'Internal server error', status: 500 } });
   }
 });

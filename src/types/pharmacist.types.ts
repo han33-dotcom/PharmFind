@@ -24,6 +24,7 @@ export interface PharmacistOrderItem {
 
 export interface InventoryItem {
   id: string;
+  medicineId?: number;
   medicineName: string;
   scientificName: string;
   category: string;

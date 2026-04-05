@@ -59,24 +59,31 @@ class Database {
   // User operations
   static createUser(user) {
     const users = this.read('users');
-    users.push(user);
+    const newUser = {
+      ...user,
+      role: user.role || 'patient',
+    };
+    users.push(newUser);
     this.write('users', users);
-    return user;
+    return newUser;
   }
 
   static findUserByEmail(email) {
     const users = this.read('users');
-    return users.find(u => u.email === email);
+    const user = users.find(u => u.email === email);
+    return user ? { ...user, role: user.role || 'patient' } : undefined;
   }
 
   static findUserByPhone(phone) {
     const users = this.read('users');
-    return users.find(u => u.phone === phone);
+    const user = users.find(u => u.phone === phone);
+    return user ? { ...user, role: user.role || 'patient' } : undefined;
   }
 
   static findUserById(id) {
     const users = this.read('users');
-    return users.find(u => u.id === id);
+    const user = users.find(u => u.id === id);
+    return user ? { ...user, role: user.role || 'patient' } : undefined;
   }
 
   static updateUser(id, updates) {
@@ -84,7 +91,7 @@ class Database {
     const index = users.findIndex(u => u.id === id);
     if (index === -1) return null;
 
-    users[index] = { ...users[index], ...updates };
+    users[index] = { ...users[index], ...updates, role: updates.role || users[index].role || 'patient' };
     this.write('users', users);
     return users[index];
   }
@@ -196,6 +203,53 @@ class Database {
     return this.read('pharmacyInventory');
   }
 
+  static getInventoryByPharmacyId(pharmacyId) {
+    const inventory = this.read('pharmacyInventory');
+    const medicines = this.read('medicines');
+
+    return inventory
+      .filter((inv) => Number(inv.pharmacyId) === Number(pharmacyId))
+      .map((inv) => {
+        const medicine = medicines.find((item) => Number(item.id) === Number(inv.medicineId));
+        if (!medicine) return null;
+
+        return {
+          ...medicine,
+          pharmacyId: Number(inv.pharmacyId),
+          medicineId: Number(inv.medicineId),
+          price: Number(inv.price ?? medicine.basePrice ?? 0),
+          stockStatus: inv.stockStatus || 'In Stock',
+          quantity: Number(
+            inv.quantity ??
+              (inv.stockStatus === 'Out of Stock' ? 0 : inv.stockStatus === 'Low Stock' ? 5 : 50)
+          ),
+          lastUpdated: inv.lastUpdated || new Date().toISOString(),
+        };
+      })
+      .filter(Boolean);
+  }
+
+  static updateInventoryItem(pharmacyId, medicineId, updates) {
+    const inventory = this.read('pharmacyInventory');
+    const index = inventory.findIndex(
+      (item) =>
+        Number(item.pharmacyId) === Number(pharmacyId) && Number(item.medicineId) === Number(medicineId)
+    );
+
+    if (index === -1) return null;
+
+    inventory[index] = {
+      ...inventory[index],
+      ...updates,
+      pharmacyId: Number(pharmacyId),
+      medicineId: Number(medicineId),
+      lastUpdated: new Date().toISOString(),
+    };
+
+    this.write('pharmacyInventory', inventory);
+    return inventory[index];
+  }
+
   static getMedicinesByPharmacy(pharmacyId) {
     const inventory = this.read('pharmacyInventory');
     const medicines = this.read('medicines');
@@ -229,6 +283,23 @@ class Database {
     return order;
   }
 
+  static getOrdersByPharmacyId(pharmacyId) {
+    const orders = this.read('orders');
+    const users = this.read('users');
+
+    return orders
+      .filter((order) => (order.items || []).some((item) => Number(item.pharmacyId) === Number(pharmacyId)))
+      .map((order) => {
+        const patient = users.find((user) => user.id === order.userId);
+        return {
+          ...order,
+          patientName: patient?.fullName || 'Unknown patient',
+          patientPhone: order.phoneNumber || patient?.phone || '',
+          items: (order.items || []).filter((item) => Number(item.pharmacyId) === Number(pharmacyId)),
+        };
+      });
+  }
+
   static getUserOrders(userId) {
     const orders = this.read('orders');
     return orders.filter(o => o.userId === userId);
@@ -239,20 +310,78 @@ class Database {
     return orders.find(o => o.orderId === orderId);
   }
 
-  static updateOrderStatus(orderId, status, note) {
+  static updateOrder(orderId, updates, note) {
     const orders = this.read('orders');
-    const order = orders.find(o => o.orderId === orderId);
+    const order = orders.find((item) => item.orderId === orderId);
     if (!order) return null;
 
-    order.status = status;
-    order.statusHistory.push({
-      status,
-      timestamp: new Date().toISOString(),
-      note,
-    });
-    
+    const previousStatus = order.status;
+    Object.assign(order, updates, { updatedAt: new Date().toISOString() });
+
+    if (updates.status && updates.status !== previousStatus) {
+      order.statusHistory = order.statusHistory || [];
+      order.statusHistory.push({
+        status: updates.status,
+        timestamp: new Date().toISOString(),
+        note,
+      });
+    }
+
     this.write('orders', orders);
     return order;
+  }
+
+  static updateOrderStatus(orderId, status, note) {
+    return this.updateOrder(orderId, { status }, note);
+  }
+
+  static getAvailableDriverOrders() {
+    const orders = this.read('orders');
+    const users = this.read('users');
+
+    return orders
+      .filter(
+        (order) =>
+          ['Confirmed', 'Preparing'].includes(order.status) &&
+          !order.driverId &&
+          (order.items || []).some((item) => item.type === 'delivery')
+      )
+      .map((order) => {
+        const patient = users.find((user) => user.id === order.userId);
+        return {
+          ...order,
+          patientName: patient?.fullName || 'Unknown patient',
+          patientPhone: order.phoneNumber || patient?.phone || '',
+        };
+      });
+  }
+
+  static getDriverOrders(driverId) {
+    const orders = this.read('orders');
+    const users = this.read('users');
+
+    return orders
+      .filter((order) => order.driverId === driverId)
+      .map((order) => {
+        const patient = users.find((user) => user.id === order.userId);
+        return {
+          ...order,
+          patientName: patient?.fullName || 'Unknown patient',
+          patientPhone: order.phoneNumber || patient?.phone || '',
+        };
+      });
+  }
+
+  static assignDriver(orderId, driver) {
+    return this.updateOrder(
+      orderId,
+      {
+        driverId: driver.id,
+        driverName: driver.fullName,
+        assignedAt: new Date().toISOString(),
+      },
+      `Assigned to driver ${driver.fullName}`
+    );
   }
 
   // Address operations

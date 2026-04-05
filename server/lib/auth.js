@@ -10,6 +10,7 @@ export const signAccessToken = (user) =>
     {
       userId: user.id,
       email: user.email,
+      role: user.role || 'patient',
     },
     JWT_SECRET,
     { expiresIn: '7d' }

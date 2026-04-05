@@ -15,6 +15,7 @@ const mapUserRecord = (user) => {
     passwordHash: user.password_hash,
     fullName: user.full_name,
     phone: user.phone,
+    role: user.role || 'patient',
     createdAt: user.created_at,
     updatedAt: user.updated_at,
     emailVerified: user.email_verified,
@@ -38,6 +39,7 @@ const USER_UPDATE_FIELDS = {
   passwordHash: 'password_hash',
   fullName: 'full_name',
   phone: 'phone',
+  role: 'role',
   emailVerified: 'email_verified',
 };
 
@@ -57,6 +59,21 @@ const PHARMACY_UPDATE_FIELDS = {
   baseDeliveryFee: 'base_delivery_fee',
   verified: 'verified',
   verificationStatus: 'verification_status',
+};
+
+const ORDER_UPDATE_FIELDS = {
+  status: 'status',
+  driverId: 'driver_id',
+  driverName: 'driver_name',
+  assignedAt: 'assigned_at',
+  pickedUpAt: 'picked_up_at',
+  deliveredAt: 'delivered_at',
+};
+
+const INVENTORY_UPDATE_FIELDS = {
+  price: 'price',
+  stockStatus: 'stock_status',
+  quantity: 'quantity',
 };
 
 class PostgresDatabase {
@@ -83,11 +100,11 @@ class PostgresDatabase {
   // ==================== User Operations ====================
   async createUser(user) {
     const query = `
-      INSERT INTO users (id, email, password_hash, full_name, phone, email_verified)
-      VALUES ($1, $2, $3, $4, $5, $6)
+      INSERT INTO users (id, email, password_hash, full_name, phone, role, email_verified)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
       RETURNING *
     `;
-    const values = [user.id, user.email, user.passwordHash, user.fullName, user.phone || null, user.emailVerified || false];
+    const values = [user.id, user.email, user.passwordHash, user.fullName, user.phone || null, user.role || 'patient', user.emailVerified || false];
     const result = await this.pool.query(query, values);
     return mapUserRecord(result.rows[0]);
   }
@@ -248,6 +265,54 @@ class PostgresDatabase {
     return result.rows;
   }
 
+  async getInventoryByPharmacyId(pharmacyId) {
+    const query = `
+      SELECT
+        m.id,
+        m.name,
+        m.category,
+        m.base_price,
+        m.description,
+        m.manufacturer,
+        m.requires_prescription,
+        pi.pharmacy_id,
+        pi.medicine_id,
+        pi.price,
+        pi.stock_status,
+        pi.quantity,
+        pi.last_updated
+      FROM pharmacy_inventory pi
+      JOIN medicines m ON pi.medicine_id = m.id
+      WHERE pi.pharmacy_id = $1
+      ORDER BY m.name
+    `;
+    const result = await this.pool.query(query, [pharmacyId]);
+    return result.rows;
+  }
+
+  async updateInventoryItem(pharmacyId, medicineId, updates) {
+    const fields = Object.keys(updates);
+    if (fields.length === 0) {
+      const result = await this.pool.query(
+        'SELECT * FROM pharmacy_inventory WHERE pharmacy_id = $1 AND medicine_id = $2',
+        [pharmacyId, medicineId]
+      );
+      return result.rows[0] || null;
+    }
+
+    const mappedFields = fields.map((field) => INVENTORY_UPDATE_FIELDS[field] || field);
+    const setClause = mappedFields.map((field, index) => `${field} = $${index + 3}`).join(', ');
+    const values = Object.values(updates);
+    const query = `
+      UPDATE pharmacy_inventory
+      SET ${setClause}, last_updated = NOW()
+      WHERE pharmacy_id = $1 AND medicine_id = $2
+      RETURNING *
+    `;
+    const result = await this.pool.query(query, [pharmacyId, medicineId, ...values]);
+    return result.rows[0] || null;
+  }
+
   // ==================== Order Operations ====================
   async createOrder(order) {
     const client = await this.pool.connect();
@@ -309,6 +374,52 @@ class PostgresDatabase {
     } finally {
       client.release();
     }
+  }
+
+  async getOrdersByPharmacyId(pharmacyId) {
+    const query = `
+      SELECT
+        o.*,
+        u.full_name AS patient_name,
+        COALESCE(u.phone, o.phone_number, '') AS patient_phone,
+        COALESCE(
+          json_agg(
+            json_build_object(
+              'id', oi.id,
+              'medicineId', oi.medicine_id,
+              'medicineName', oi.medicine_name,
+              'pharmacyId', oi.pharmacy_id,
+              'pharmacyName', oi.pharmacy_name,
+              'quantity', oi.quantity,
+              'price', oi.price,
+              'type', oi.type
+            )
+          ) FILTER (WHERE oi.id IS NOT NULL),
+          '[]'
+        ) AS items
+      FROM orders o
+      JOIN users u ON u.id = o.user_id
+      LEFT JOIN order_items oi
+        ON oi.order_id = o.id
+        AND oi.pharmacy_id = $1
+      WHERE EXISTS (
+        SELECT 1
+        FROM order_items oi_match
+        WHERE oi_match.order_id = o.id
+          AND oi_match.pharmacy_id = $1
+      )
+      GROUP BY o.id, u.full_name, u.phone
+      ORDER BY o.created_at DESC
+    `;
+    const result = await this.pool.query(query, [pharmacyId]);
+    return result.rows.map((row) => ({
+      ...row,
+      orderId: row.id,
+      patientName: row.patient_name,
+      patientPhone: row.patient_phone,
+      items: row.items || [],
+      statusHistory: [],
+    }));
   }
 
   async getUserOrders(userId) {
@@ -387,25 +498,166 @@ class PostgresDatabase {
     };
   }
 
-  async updateOrderStatus(orderId, status, note) {
+  async updateOrder(orderId, updates, note) {
+    const fields = Object.keys(updates);
+    if (fields.length === 0) return this.findOrderById(orderId);
+
+    const mappedFields = fields.map((field) => ORDER_UPDATE_FIELDS[field] || field);
+    const values = Object.values(updates);
+    const setClause = mappedFields.map((field, index) => `${field} = $${index + 2}`).join(', ');
     const query = `
-      UPDATE orders 
-      SET status = $1, updated_at = NOW()
-      WHERE id = $2
+      UPDATE orders
+      SET ${setClause}, updated_at = NOW()
+      WHERE id = $1
       RETURNING *
     `;
-    const result = await this.pool.query(query, [status, orderId]);
+    const result = await this.pool.query(query, [orderId, ...values]);
     if (result.rows.length === 0) return null;
 
-    // Status history is auto-created by trigger, but add note if provided
-    if (note) {
-      await this.pool.query(
-        'UPDATE order_status_history SET note = $1 WHERE order_id = $2 AND status = $3 AND timestamp = (SELECT MAX(timestamp) FROM order_status_history WHERE order_id = $2)',
-        [note, orderId, status]
+    if (updates.status) {
+      const latestHistoryResult = await this.pool.query(
+        `
+          SELECT id
+          FROM order_status_history
+          WHERE order_id = $1
+          ORDER BY timestamp DESC, id DESC
+          LIMIT 1
+        `,
+        [orderId]
       );
+
+      if (note && latestHistoryResult.rows[0]) {
+        await this.pool.query('UPDATE order_status_history SET note = $1 WHERE id = $2', [
+          note,
+          latestHistoryResult.rows[0].id,
+        ]);
+      }
     }
 
     return this.findOrderById(orderId);
+  }
+
+  async updateOrderStatus(orderId, status, note) {
+    return this.updateOrder(orderId, { status }, note);
+  }
+
+  async getAvailableDriverOrders() {
+    const query = `
+      SELECT
+        o.*,
+        u.full_name AS patient_name,
+        COALESCE(u.phone, o.phone_number, '') AS patient_phone,
+        COALESCE(MAX(p.name), '') AS pharmacy_name,
+        COALESCE(MAX(p.address), '') AS pharmacy_address,
+        MAX(p.latitude) AS pharmacy_latitude,
+        MAX(p.longitude) AS pharmacy_longitude,
+        COALESCE(MAX(p.delivery_time), '') AS pharmacy_delivery_time,
+        COALESCE(
+          json_agg(
+            json_build_object(
+              'id', oi.id,
+              'medicineId', oi.medicine_id,
+              'medicineName', oi.medicine_name,
+              'pharmacyId', oi.pharmacy_id,
+              'pharmacyName', oi.pharmacy_name,
+              'quantity', oi.quantity,
+              'price', oi.price,
+              'type', oi.type
+            )
+          ) FILTER (WHERE oi.id IS NOT NULL),
+          '[]'
+        ) AS items
+      FROM orders o
+      JOIN users u ON u.id = o.user_id
+      LEFT JOIN order_items oi ON oi.order_id = o.id
+      LEFT JOIN pharmacies p ON p.id = oi.pharmacy_id
+      WHERE o.status IN ('Confirmed', 'Preparing')
+        AND o.driver_id IS NULL
+        AND EXISTS (
+          SELECT 1
+          FROM order_items oi_delivery
+          WHERE oi_delivery.order_id = o.id
+            AND oi_delivery.type = 'delivery'
+        )
+      GROUP BY o.id, u.full_name, u.phone
+      ORDER BY o.created_at DESC
+    `;
+    const result = await this.pool.query(query);
+    return result.rows.map((row) => ({
+      ...row,
+      orderId: row.id,
+      patientName: row.patient_name,
+      patientPhone: row.patient_phone,
+      pharmacyName: row.pharmacy_name,
+      pharmacyAddress: row.pharmacy_address,
+      pharmacyLatitude: row.pharmacy_latitude,
+      pharmacyLongitude: row.pharmacy_longitude,
+      estimatedDeliveryTime: row.pharmacy_delivery_time,
+      items: row.items || [],
+      statusHistory: [],
+    }));
+  }
+
+  async getDriverOrders(driverId) {
+    const query = `
+      SELECT
+        o.*,
+        u.full_name AS patient_name,
+        COALESCE(u.phone, o.phone_number, '') AS patient_phone,
+        COALESCE(MAX(p.name), '') AS pharmacy_name,
+        COALESCE(MAX(p.address), '') AS pharmacy_address,
+        MAX(p.latitude) AS pharmacy_latitude,
+        MAX(p.longitude) AS pharmacy_longitude,
+        COALESCE(MAX(p.delivery_time), '') AS pharmacy_delivery_time,
+        COALESCE(
+          json_agg(
+            json_build_object(
+              'id', oi.id,
+              'medicineId', oi.medicine_id,
+              'medicineName', oi.medicine_name,
+              'pharmacyId', oi.pharmacy_id,
+              'pharmacyName', oi.pharmacy_name,
+              'quantity', oi.quantity,
+              'price', oi.price,
+              'type', oi.type
+            )
+          ) FILTER (WHERE oi.id IS NOT NULL),
+          '[]'
+        ) AS items
+      FROM orders o
+      JOIN users u ON u.id = o.user_id
+      LEFT JOIN order_items oi ON oi.order_id = o.id
+      LEFT JOIN pharmacies p ON p.id = oi.pharmacy_id
+      WHERE o.driver_id = $1
+      GROUP BY o.id, u.full_name, u.phone
+      ORDER BY o.created_at DESC
+    `;
+    const result = await this.pool.query(query, [driverId]);
+    return result.rows.map((row) => ({
+      ...row,
+      orderId: row.id,
+      patientName: row.patient_name,
+      patientPhone: row.patient_phone,
+      pharmacyName: row.pharmacy_name,
+      pharmacyAddress: row.pharmacy_address,
+      pharmacyLatitude: row.pharmacy_latitude,
+      pharmacyLongitude: row.pharmacy_longitude,
+      estimatedDeliveryTime: row.pharmacy_delivery_time,
+      items: row.items || [],
+      statusHistory: [],
+    }));
+  }
+
+  async assignDriver(orderId, driver) {
+    return this.updateOrder(
+      orderId,
+      {
+        driverId: driver.id,
+        driverName: driver.fullName,
+        assignedAt: new Date().toISOString(),
+      },
+      `Assigned to driver ${driver.fullName}`
+    );
   }
 
   // ==================== Address Operations ====================

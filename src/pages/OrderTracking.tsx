@@ -6,15 +6,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import Logo from "@/components/Logo";
 import { CartIcon } from "@/components/CartIcon";
-import { useOrders, OrderStatus } from "@/contexts/OrdersContext";
-import { useCart } from "@/contexts/CartContext";
+import { useOrders } from "@/contexts/OrdersContext";
+import { useCart, CartItem } from "@/contexts/CartContext";
 import { useFavorites } from "@/contexts/FavoritesContext";
 import { OrderStatusBadge } from "@/components/OrderStatusBadge";
 import { format } from "date-fns";
 import { MockOrderControls } from "@/components/MockOrderControls";
 import { toast } from "@/hooks/use-toast";
+import { OrderStatus } from "@/types";
 
-const pharmacyDetails: Record<string, any> = {
+const pharmacyDetails: Record<string, { id: number; name: string; address: string; phone: string }> = {
   "1": { id: 1, name: "Habib Pharmacy", address: "Hamra Street, Beirut", phone: "+961 1 340555" },
   "2": { id: 2, name: "Wardieh Pharmacy", address: "Achrafieh, Beirut", phone: "+961 1 200300" },
   "3": { id: 3, name: "Raouche Pharmacy", address: "Raouche, Beirut", phone: "+961 1 789456" },
@@ -29,28 +30,43 @@ const timeSlotLabels: Record<string, string> = {
   evening: "Evening (5 PM - 9 PM)",
 };
 
-const statusTimeline: OrderStatus[] = ['pending', 'confirmed', 'preparing', 'ready'];
-const deliveryStatuses: OrderStatus[] = ['out_for_delivery', 'delivered'];
+const statusTimeline: OrderStatus[] = ['Pending', 'Confirmed', 'Preparing'];
+const deliveryStatuses: OrderStatus[] = ['Out for Delivery', 'Delivered'];
 
 const OrderTracking = () => {
   const { orderId } = useParams<{ orderId: string }>();
   const navigate = useNavigate();
-  const { getOrder, markOrderAsRead } = useOrders();
+  const { getOrder, isLoading, markOrderAsRead, refreshOrders } = useOrders();
   const { addToCart } = useCart();
   const { addFavorite, isFavorite } = useFavorites();
 
   const order = orderId ? getOrder(orderId) : undefined;
 
   useEffect(() => {
-    if (!order) {
-      navigate("/orders");
+    if (orderId && !order) {
+      void refreshOrders();
     } else if (orderId) {
       markOrderAsRead(orderId);
     }
-  }, [order, navigate, orderId, markOrderAsRead]);
+  }, [order, orderId, markOrderAsRead, refreshOrders]);
+
+  if (!order && isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <p className="text-muted-foreground">Loading order...</p>
+      </div>
+    );
+  }
 
   if (!order) {
-    return null;
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <p className="text-muted-foreground">We could not find that order.</p>
+          <Button onClick={() => navigate("/orders")}>Go to My Orders</Button>
+        </div>
+      </div>
+    );
   }
 
   const hasDelivery = order.items.some((item) => item.type === 'delivery');
@@ -58,13 +74,15 @@ const OrderTracking = () => {
   const currentStatusIndex = timeline.indexOf(order.status);
 
   const handleReorderAll = () => {
+    const items = Object.values(order.itemsByPharmacy).flat();
     let itemCount = 0;
-    order.items.forEach((item) => {
+
+    items.forEach((item) => {
       addToCart(
         {
           medicineId: item.medicineId,
           medicineName: item.medicineName,
-          category: item.category,
+          category: item.category || 'General',
           pharmacyId: item.pharmacyId,
           pharmacyName: item.pharmacyName,
           price: item.price,
@@ -85,12 +103,12 @@ const OrderTracking = () => {
     navigate("/cart");
   };
 
-  const handleReorderItem = (item: any) => {
+  const handleReorderItem = (item: CartItem) => {
     addToCart(
       {
         medicineId: item.medicineId,
         medicineName: item.medicineName,
-        category: item.category,
+        category: item.category || 'General',
         pharmacyId: item.pharmacyId,
         pharmacyName: item.pharmacyName,
         price: item.price,
@@ -107,12 +125,12 @@ const OrderTracking = () => {
     });
   };
 
-  const handleAddToFavorites = async (item: any) => {
+  const handleAddToFavorites = async (item: CartItem) => {
     try {
       await addFavorite({
         medicineId: item.medicineId,
         medicineName: item.medicineName,
-        category: item.category,
+        category: item.category || 'General',
         lastPharmacyId: item.pharmacyId,
         lastPharmacyName: item.pharmacyName,
         lastPrice: item.price,
@@ -133,7 +151,6 @@ const OrderTracking = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
       <header className="border-b bg-card sticky top-0 z-10">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
@@ -162,10 +179,8 @@ const OrderTracking = () => {
           </div>
         </div>
 
-        {/* Mock Controls - Hidden in production */}
         <MockOrderControls orderId={order.orderId} />
 
-        {/* Quick Reorder Section */}
         <Card className="border-primary/20 bg-primary/5 mb-6">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
@@ -183,7 +198,6 @@ const OrderTracking = () => {
           </CardContent>
         </Card>
 
-        {/* Status Timeline */}
         <Card className="mb-6">
           <CardHeader>
             <CardTitle>Order Status</CardTitle>
@@ -193,23 +207,17 @@ const OrderTracking = () => {
               {timeline.map((status, index) => {
                 const isCompleted = index <= currentStatusIndex;
                 const isCurrent = index === currentStatusIndex;
-                const statusHistory = order.statusHistory.find((h) => h.status === status);
+                const statusHistory = order.statusHistory.find((entry) => entry.status === status);
 
                 return (
                   <div key={status} className="flex gap-4">
                     <div className="flex flex-col items-center">
                       <div
                         className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                          isCompleted
-                            ? 'bg-primary text-primary-foreground'
-                            : 'bg-muted text-muted-foreground'
+                          isCompleted ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
                         }`}
                       >
-                        {isCompleted ? (
-                          <CheckCircle className="h-4 w-4" />
-                        ) : (
-                          <Clock className="h-4 w-4" />
-                        )}
+                        {isCompleted ? <CheckCircle className="h-4 w-4" /> : <Clock className="h-4 w-4" />}
                       </div>
                       {index < timeline.length - 1 && (
                         <div
@@ -225,7 +233,7 @@ const OrderTracking = () => {
                       </div>
                       {statusHistory && (
                         <p className="text-sm text-muted-foreground mt-1">
-                          {format(new Date(statusHistory.timestamp), 'MMM dd, yyyy • h:mm a')}
+                          {format(new Date(statusHistory.timestamp), 'MMM dd, yyyy h:mm a')}
                         </p>
                       )}
                     </div>
@@ -236,9 +244,13 @@ const OrderTracking = () => {
           </CardContent>
         </Card>
 
-        {/* Order Details */}
         {Object.entries(order.itemsByPharmacy).map(([pharmacyId, items]) => {
-          const pharmacy = pharmacyDetails[pharmacyId];
+          const pharmacy = pharmacyDetails[pharmacyId] ?? {
+            id: Number(pharmacyId),
+            name: items[0]?.pharmacyName || `Pharmacy ${pharmacyId}`,
+            address: "Address unavailable",
+            phone: "Phone unavailable",
+          };
           const isDelivery = items.some((item) => item.type === 'delivery');
 
           return (
@@ -259,7 +271,6 @@ const OrderTracking = () => {
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
-                {/* Items */}
                 <div className="space-y-2">
                   {items.map((item) => (
                     <div key={item.id} className="flex items-center justify-between py-2 gap-2">
@@ -300,7 +311,6 @@ const OrderTracking = () => {
 
                 <Separator />
 
-                {/* Delivery/Pickup Info */}
                 {isDelivery && order.deliveryForm ? (
                   <div>
                     <h4 className="font-semibold mb-2">Delivery Address</h4>
@@ -331,7 +341,6 @@ const OrderTracking = () => {
           );
         })}
 
-        {/* Order Summary */}
         <Card>
           <CardHeader>
             <CardTitle>Order Summary</CardTitle>

@@ -2,7 +2,8 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useOrders, OrderStatus } from "@/contexts/OrdersContext";
+import { useOrders } from "@/contexts/OrdersContext";
+import { OrderStatus } from "@/types";
 import { Badge } from "@/components/ui/badge";
 import { Settings } from "lucide-react";
 
@@ -18,16 +19,16 @@ export const MockOrderControls = ({ orderId }: MockOrderControlsProps) => {
   if (!order) return null;
 
   const statuses: OrderStatus[] = [
-    'pending',
-    'confirmed',
-    'preparing',
-    'ready',
-    'out_for_delivery',
-    'delivered',
+    'Pending',
+    'Confirmed',
+    'Preparing',
+    'Out for Delivery',
+    'Delivered',
+    'Cancelled',
   ];
 
   const handleStatusChange = (newStatus: string) => {
-    updateOrderStatus(orderId, newStatus as OrderStatus);
+    void updateOrderStatus(orderId, newStatus as OrderStatus);
   };
 
   return (
@@ -60,7 +61,7 @@ export const MockOrderControls = ({ orderId }: MockOrderControlsProps) => {
                 <SelectContent>
                   {statuses.map((status) => (
                     <SelectItem key={status} value={status}>
-                      {status.replace(/_/g, ' ').toUpperCase()}
+                      {status}
                     </SelectItem>
                   ))}
                 </SelectContent>

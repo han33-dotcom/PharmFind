@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { CheckCircle, MapPin, Phone, Clock, Pill } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -6,9 +6,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import Logo from "@/components/Logo";
-import { toast } from "@/hooks/use-toast";
+import { useOrders } from "@/contexts/OrdersContext";
 
-const pharmacyDetails: Record<string, any> = {
+const pharmacyDetails: Record<string, { id: number; name: string; address: string; phone: string }> = {
   "1": { id: 1, name: "Habib Pharmacy", address: "Hamra Street, Beirut", phone: "+961 1 340555" },
   "2": { id: 2, name: "Wardieh Pharmacy", address: "Achrafieh, Beirut", phone: "+961 1 200300" },
   "3": { id: 3, name: "Raouche Pharmacy", address: "Raouche, Beirut", phone: "+961 1 789456" },
@@ -27,24 +27,37 @@ const OrderConfirmation = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const orderId = searchParams.get("orderId");
-  const [orderData, setOrderData] = useState<any>(null);
+  const { getOrder, isLoading, refreshOrders } = useOrders();
+  const orderData = orderId ? getOrder(orderId) : undefined;
 
   useEffect(() => {
-    // Load order data from localStorage
-    const savedOrder = localStorage.getItem('current_order');
-    if (savedOrder) {
-      const data = JSON.parse(savedOrder);
-      setOrderData(data);
-      // Clear the order data after loading
-      localStorage.removeItem('current_order');
-    } else {
-      // If no order data, redirect to dashboard
+    if (!orderId) {
       navigate("/dashboard");
+      return;
     }
-  }, [navigate]);
+
+    if (!orderData) {
+      void refreshOrders();
+    }
+  }, [navigate, orderData, orderId, refreshOrders]);
+
+  if (!orderData && isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <p className="text-muted-foreground">Loading your order...</p>
+      </div>
+    );
+  }
 
   if (!orderData) {
-    return null;
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <p className="text-muted-foreground">We could not load that order.</p>
+          <Button onClick={() => navigate("/orders")}>Go to My Orders</Button>
+        </div>
+      </div>
+    );
   }
 
   const handleTrackOrder = () => {
@@ -55,7 +68,6 @@ const OrderConfirmation = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
       <header className="border-b bg-card">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-center">
@@ -65,7 +77,6 @@ const OrderConfirmation = () => {
       </header>
 
       <div className="container mx-auto px-4 py-8 max-w-4xl">
-        {/* Success Header */}
         <div className="text-center py-8">
           <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-green-100 dark:bg-green-900/20 mb-4">
             <CheckCircle className="h-12 w-12 text-green-600 dark:text-green-500" />
@@ -76,12 +87,16 @@ const OrderConfirmation = () => {
           </p>
         </div>
 
-        {/* Order Details by Pharmacy */}
         <div className="space-y-6 mb-8">
-          {Object.entries(orderData.itemsByPharmacy).map(([pharmacyId, items]: [string, any]) => {
-            const pharmacy = pharmacyDetails[pharmacyId];
-            const hasDelivery = items.some((item: any) => item.type === 'delivery');
-            const hasReservation = items.some((item: any) => item.type === 'reservation');
+          {Object.entries(orderData.itemsByPharmacy).map(([pharmacyId, items]) => {
+            const pharmacy = pharmacyDetails[pharmacyId] ?? {
+              id: Number(pharmacyId),
+              name: items[0]?.pharmacyName || `Pharmacy ${pharmacyId}`,
+              address: "Address unavailable",
+              phone: "Phone unavailable",
+            };
+            const hasDelivery = items.some((item) => item.type === 'delivery');
+            const hasReservation = items.some((item) => item.type === 'reservation');
 
             return (
               <Card key={pharmacyId}>
@@ -94,14 +109,13 @@ const OrderConfirmation = () => {
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {/* Items List */}
                   <div className="space-y-2">
                     <h4 className="font-semibold text-sm">Items Ordered:</h4>
-                    {items.map((item: any) => (
+                    {items.map((item) => (
                       <div key={item.id} className="flex justify-between text-sm">
                         <div className="flex items-center gap-2">
                           <Pill className="h-4 w-4 text-muted-foreground" />
-                          <span>{item.medicineName} × {item.quantity}</span>
+                          <span>{item.medicineName} x {item.quantity}</span>
                         </div>
                         <span className="font-semibold">${(item.price * item.quantity).toFixed(2)}</span>
                       </div>
@@ -110,7 +124,6 @@ const OrderConfirmation = () => {
 
                   <Separator />
 
-                  {/* Delivery Info */}
                   {hasDelivery && orderData.deliveryForm && (
                     <div className="space-y-2 text-sm">
                       <h4 className="font-semibold">Delivery Address:</h4>
@@ -130,7 +143,6 @@ const OrderConfirmation = () => {
                     </div>
                   )}
 
-                  {/* Pickup Info */}
                   {hasReservation && orderData.reservationForm && (
                     <div className="space-y-2 text-sm">
                       <h4 className="font-semibold">Pickup Information:</h4>
@@ -151,13 +163,9 @@ const OrderConfirmation = () => {
                         <Clock className="h-4 w-4" />
                         Pickup time: {timeSlotLabels[orderData.pickupTimes[pharmacyId]] || "As selected"}
                       </p>
-                      <p className="text-amber-600 dark:text-amber-500 text-xs mt-1">
-                        Please pick up within 24 hours
-                      </p>
                     </div>
                   )}
 
-                  {/* Contact Pharmacy Button */}
                   <Button variant="outline" className="w-full" asChild>
                     <a href={`tel:${pharmacy.phone}`}>
                       <Phone className="h-4 w-4 mr-2" />
@@ -170,7 +178,6 @@ const OrderConfirmation = () => {
           })}
         </div>
 
-        {/* Order Total */}
         <Card className="mb-8">
           <CardHeader>
             <CardTitle>Order Summary</CardTitle>
@@ -192,7 +199,6 @@ const OrderConfirmation = () => {
           </CardContent>
         </Card>
 
-        {/* Action Buttons */}
         <div className="flex flex-col gap-3">
           <Button size="lg" onClick={() => navigate("/dashboard")} className="w-full">
             Back to Dashboard

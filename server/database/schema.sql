@@ -11,10 +11,13 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash VARCHAR(255) NOT NULL,
     full_name VARCHAR(255) NOT NULL,
     phone VARCHAR(20),
+    role VARCHAR(20) NOT NULL DEFAULT 'patient' CHECK (role IN ('patient', 'pharmacist', 'driver')),
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW(),
     email_verified BOOLEAN DEFAULT FALSE
 );
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(20) NOT NULL DEFAULT 'patient';
 
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 
@@ -94,6 +97,11 @@ CREATE TABLE IF NOT EXISTS orders (
     order_number VARCHAR(50) UNIQUE NOT NULL,
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     status VARCHAR(50) NOT NULL DEFAULT 'Pending',
+    driver_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    driver_name VARCHAR(255),
+    assigned_at TIMESTAMP,
+    picked_up_at TIMESTAMP,
+    delivered_at TIMESTAMP,
     subtotal DECIMAL(10,2) NOT NULL,
     delivery_fees DECIMAL(10,2) DEFAULT 0,
     total DECIMAL(10,2) NOT NULL,
@@ -106,6 +114,12 @@ CREATE TABLE IF NOT EXISTS orders (
         'Pending', 'Confirmed', 'Preparing', 'Out for Delivery', 'Delivered', 'Cancelled'
     ))
 );
+
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS driver_id UUID REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS driver_name VARCHAR(255);
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS assigned_at TIMESTAMP;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS picked_up_at TIMESTAMP;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMP;
 
 CREATE INDEX IF NOT EXISTS idx_orders_user ON orders(user_id);
 CREATE INDEX IF NOT EXISTS idx_orders_order_number ON orders(order_number);

@@ -9,16 +9,18 @@ import { Search, RefreshCw, Bell } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { DeliveryOrder } from "@/types/driver.types";
 
 const AvailableOrders = () => {
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState("");
   const [filterArea, setFilterArea] = useState<string>("all");
-  const [availableOrders, setAvailableOrders] = useState(DriverService.getAvailableOrders());
+  const [availableOrders, setAvailableOrders] = useState<DeliveryOrder[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [newOrdersCount, setNewOrdersCount] = useState(0);
-  const previousOrdersCountRef = useRef(availableOrders.length);
-  const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const previousOrdersCountRef = useRef(0);
+  const refreshIntervalRef = useRef<number | null>(null);
 
   const filteredOrders = availableOrders.filter(order => {
     const matchesSearch = 
@@ -33,30 +35,36 @@ const AvailableOrders = () => {
 
   // Real-time order request polling
   useEffect(() => {
-    const checkForNewOrders = () => {
-      const currentOrders = DriverService.getAvailableOrders();
-      const currentCount = currentOrders.length;
-      const previousCount = previousOrdersCountRef.current;
+    const checkForNewOrders = async () => {
+      try {
+        const currentOrders = await DriverService.getAvailableOrders();
+        const currentCount = currentOrders.length;
+        const previousCount = previousOrdersCountRef.current;
 
-      if (currentCount > previousCount) {
-        const newCount = currentCount - previousCount;
-        setNewOrdersCount(newCount);
-        toast.info(`New order${newCount > 1 ? 's' : ''} available!`, {
-          description: `${newCount} new delivery request${newCount > 1 ? 's' : ''} just arrived.`,
-          duration: 5000,
-        });
-        
-        // Play notification sound if browser supports it
-        if ('Notification' in window && Notification.permission === 'granted') {
-          new Notification('New Delivery Order', {
-            body: `${newCount} new order${newCount > 1 ? 's' : ''} available`,
-            icon: '/favicon.ico',
+        if (currentCount > previousCount) {
+          const newCount = currentCount - previousCount;
+          setNewOrdersCount(newCount);
+          toast.info(`New order${newCount > 1 ? 's' : ''} available!`, {
+            description: `${newCount} new delivery request${newCount > 1 ? 's' : ''} just arrived.`,
+            duration: 5000,
           });
+          
+          // Play notification sound if browser supports it
+          if ('Notification' in window && Notification.permission === 'granted') {
+            new Notification('New Delivery Order', {
+              body: `${newCount} new order${newCount > 1 ? 's' : ''} available`,
+              icon: '/favicon.ico',
+            });
+          }
         }
-      }
 
-      setAvailableOrders(currentOrders);
-      previousOrdersCountRef.current = currentCount;
+        setAvailableOrders(currentOrders);
+        previousOrdersCountRef.current = currentCount;
+      } catch (error) {
+        console.error("Failed to load available orders:", error);
+        toast.error("Failed to load available orders");
+      }
+      setIsLoading(false);
     };
 
     // Request notification permission
@@ -65,13 +73,15 @@ const AvailableOrders = () => {
     }
 
     // Initial check
-    checkForNewOrders();
+    void checkForNewOrders();
 
     // Poll for new orders every 10 seconds
-    refreshIntervalRef.current = setInterval(checkForNewOrders, 10000);
+    refreshIntervalRef.current = window.setInterval(() => {
+      void checkForNewOrders();
+    }, 10000);
 
     return () => {
-      if (refreshIntervalRef.current) {
+      if (refreshIntervalRef.current !== null) {
         clearInterval(refreshIntervalRef.current);
       }
     };
@@ -79,21 +89,30 @@ const AvailableOrders = () => {
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    const currentOrders = DriverService.getAvailableOrders();
-    setAvailableOrders(currentOrders);
-    previousOrdersCountRef.current = currentOrders.length;
-    setNewOrdersCount(0);
-    
-    // Simulate network delay
-    await new Promise(resolve => setTimeout(resolve, 500));
-    setIsRefreshing(false);
-    toast.success("Orders refreshed");
+    try {
+      const currentOrders = await DriverService.getAvailableOrders();
+      setAvailableOrders(currentOrders);
+      previousOrdersCountRef.current = currentOrders.length;
+      setNewOrdersCount(0);
+      await new Promise(resolve => setTimeout(resolve, 500));
+      toast.success("Orders refreshed");
+    } catch (error) {
+      console.error("Failed to refresh available orders:", error);
+      toast.error("Failed to refresh available orders");
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
-  const handleAcceptOrder = (orderId: string) => {
-    DriverService.acceptDelivery(orderId);
-    toast.success("Order accepted! Starting delivery...");
-    navigate("/driver/active");
+  const handleAcceptOrder = async (orderId: string) => {
+    try {
+      await DriverService.acceptDelivery(orderId);
+      toast.success("Order accepted! Starting delivery...");
+      navigate("/driver/active");
+    } catch (error: unknown) {
+      console.error("Failed to accept delivery order:", error);
+      toast.error("Failed to accept delivery order");
+    }
   };
 
   return (
@@ -150,7 +169,9 @@ const AvailableOrders = () => {
         </div>
 
         {/* Orders Grid */}
-        {filteredOrders.length === 0 ? (
+        {isLoading ? (
+          <div className="text-center py-12 text-muted-foreground">Loading available orders...</div>
+        ) : filteredOrders.length === 0 ? (
           <div className="text-center py-12">
             <p className="text-lg text-muted-foreground">
               {availableOrders.length === 0 

@@ -1,11 +1,9 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import PharmacistLayout from '@/components/pharmacist/PharmacistLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
 import {
   Table,
   TableBody,
@@ -21,15 +19,31 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Search, AlertCircle, Package } from 'lucide-react';
-import { mockInventory } from '@/data/mock/pharmacist.mock';
+import { Search, AlertCircle, Package, Loader2 } from 'lucide-react';
 import { InventoryItem } from '@/types/pharmacist.types';
+import { PharmacistOrdersService } from '@/services/pharmacist-orders.service';
 import { toast } from 'sonner';
 
 const InventoryManagement = () => {
-  const [inventory, setInventory] = useState<InventoryItem[]>(mockInventory);
+  const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const loadInventory = async () => {
+      try {
+        setInventory(await PharmacistOrdersService.getInventory());
+      } catch (error) {
+        console.error('Failed to load inventory:', error);
+        toast.error('Failed to load inventory');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    void loadInventory();
+  }, []);
 
   const categories = useMemo(() => {
     const cats = new Set(inventory.map(item => item.category));
@@ -48,23 +62,24 @@ const InventoryManagement = () => {
     });
   }, [inventory, searchQuery, categoryFilter]);
 
-  const toggleStock = (itemId: string) => {
-    setInventory(prev => prev.map(item => {
-      if (item.id === itemId) {
-        const newStockLevel = item.stockLevel > 0 ? 0 : item.minStockLevel;
-        toast.success(
-          newStockLevel > 0 
-            ? `${item.medicineName} is now available`
-            : `${item.medicineName} is now out of stock`
-        );
-        return {
-          ...item,
-          stockLevel: newStockLevel,
-          lastUpdated: new Date().toISOString(),
-        };
-      }
-      return item;
-    }));
+  const toggleStock = async (itemId: string) => {
+    const item = inventory.find((entry) => entry.id === itemId);
+    if (!item) return;
+
+    try {
+      const updated = await PharmacistOrdersService.updateInventoryAvailability(item, item.stockLevel === 0);
+      setInventory((previous) =>
+        previous.map((entry) => (entry.id === itemId ? updated : entry))
+      );
+      toast.success(
+        updated.stockLevel > 0
+          ? `${updated.medicineName} is now available`
+          : `${updated.medicineName} is now out of stock`
+      );
+    } catch (error) {
+      console.error('Failed to update inventory item:', error);
+      toast.error('Failed to update inventory item');
+    }
   };
 
   const getStockStatus = (item: InventoryItem) => {
@@ -78,6 +93,16 @@ const InventoryManagement = () => {
   ).length;
 
   const outOfStockCount = inventory.filter(item => item.stockLevel === 0).length;
+
+  if (isLoading) {
+    return (
+      <PharmacistLayout>
+        <div className="container py-8 px-4 flex justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      </PharmacistLayout>
+    );
+  }
 
   return (
     <PharmacistLayout>

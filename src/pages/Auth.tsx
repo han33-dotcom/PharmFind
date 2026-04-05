@@ -12,11 +12,20 @@ import { toast } from "sonner";
 import Logo from "@/components/Logo";
 import { AuthService } from "@/services/auth.service";
 import { PharmaciesService } from "@/services/pharmacies.service";
-import { useRole, UserRole } from "@/contexts/RoleContext";
+import { getDefaultRouteForRole, type UserRole } from "@/contexts/RoleContext";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import type { ApiError } from "@/services/api/client";
+
+const getErrorMessage = (error: unknown, fallback: string) => {
+  if (typeof error === "object" && error !== null) {
+    const apiError = error as ApiError & { error?: { message?: string } };
+    return apiError.error?.message || apiError.message || fallback;
+  }
+
+  return fallback;
+};
 
 const Auth = () => {
-  const { setRole } = useRole();
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
   const [loginMethod, setLoginMethod] = useState<'email' | 'phone'>('email');
@@ -44,10 +53,11 @@ const Auth = () => {
         password,
         fullName: `${firstName} ${lastName}`,
         phone,
+        role: selectedRole,
       });
       
-      if ((response as any).message) {
-        toast.success((response as any).message);
+      if (response.message) {
+        toast.success(response.message);
       } else {
         toast.success("Account created successfully!");
       }
@@ -102,27 +112,30 @@ const Auth = () => {
           } else {
             toast.success("Pharmacy registered successfully! You can now receive orders.");
           }
-        } catch (pharmacyError: any) {
+        } catch (pharmacyError: unknown) {
+          const typedError = pharmacyError as ApiError & { error?: { message?: string } };
           console.error('Pharmacy registration error details:', {
             error: pharmacyError,
-            errorMessage: pharmacyError?.error?.message,
-            message: pharmacyError?.message,
-            status: pharmacyError?.status,
+            errorMessage: typedError.error?.message,
+            message: typedError.message,
+            status: typedError.status,
             fullError: pharmacyError
           });
           
           // Show more detailed error message
           let errorMessage = "Account created but pharmacy registration failed.";
-          if (pharmacyError?.error?.message) {
-            errorMessage = pharmacyError.error.message;
-          } else if (pharmacyError?.message) {
-            errorMessage = pharmacyError.message;
-          } else if (pharmacyError?.status === 401) {
+          if (typedError.error?.message) {
+            errorMessage = typedError.error.message;
+          } else if (typedError.message) {
+            errorMessage = typedError.message;
+          } else if (typedError.status === 401) {
             errorMessage = "Authentication failed. Please try logging in again.";
-          } else if (pharmacyError?.status === 409) {
+          } else if (typedError.status === 409) {
             errorMessage = "You already have a registered pharmacy.";
-          } else if (pharmacyError?.status === 400) {
+          } else if (typedError.status === 400) {
             errorMessage = "Invalid pharmacy data. Please check all fields.";
+          } else if (typedError.status === 403) {
+            errorMessage = "This account is not allowed to register a pharmacy.";
           }
           
           toast.error(errorMessage + " You can register your pharmacy later from your dashboard.");
@@ -130,14 +143,9 @@ const Auth = () => {
         }
       }
       
-      setRole(selectedRole);
-      const redirectPath = 
-        selectedRole === 'pharmacist' ? '/pharmacist/dashboard' : 
-        selectedRole === 'driver' ? '/driver/dashboard' : 
-        '/dashboard';
-      navigate(redirectPath);
-    } catch (error: any) {
-      const errorMessage = error?.error?.message || error?.message || "Failed to create account";
+      navigate(getDefaultRouteForRole(response.user.role));
+    } catch (error: unknown) {
+      const errorMessage = getErrorMessage(error, "Failed to create account");
       setError(errorMessage);
       toast.error(errorMessage);
     } finally {
@@ -158,21 +166,16 @@ const Auth = () => {
     const password = formData.get('login-password') as string;
 
     try {
-      await AuthService.login({
+      const response = await AuthService.login({
         email,
         phone,
         password,
       });
       
-      setRole(selectedRole);
       toast.success("Logged in successfully!");
-      const redirectPath = 
-        selectedRole === 'pharmacist' ? '/pharmacist/dashboard' : 
-        selectedRole === 'driver' ? '/driver/dashboard' : 
-        '/dashboard';
-      navigate(redirectPath);
-    } catch (error: any) {
-      const errorMessage = error?.error?.message || error?.message || "Invalid credentials";
+      navigate(getDefaultRouteForRole(response.user.role));
+    } catch (error: unknown) {
+      const errorMessage = getErrorMessage(error, "Invalid credentials");
       setError(errorMessage);
       toast.error(errorMessage);
     } finally {
@@ -259,23 +262,6 @@ const Auth = () => {
                         {error}
                       </div>
                     )}
-                    <div className="space-y-2">
-                      <Label>I am a</Label>
-                      <RadioGroup value={selectedRole} onValueChange={(value) => setSelectedRole(value as UserRole)}>
-                        <div className="flex items-center space-x-2">
-                          <RadioGroupItem value="patient" id="login-patient" />
-                          <Label htmlFor="login-patient" className="font-normal cursor-pointer">Patient</Label>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <RadioGroupItem value="pharmacist" id="login-pharmacist" />
-                          <Label htmlFor="login-pharmacist" className="font-normal cursor-pointer">Pharmacist</Label>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <RadioGroupItem value="driver" id="login-driver" />
-                          <Label htmlFor="login-driver" className="font-normal cursor-pointer">Delivery Driver</Label>
-                        </div>
-                      </RadioGroup>
-                    </div>
                     <div className="space-y-2">
                       <Label>Login with</Label>
                       <div className="flex gap-2">

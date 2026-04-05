@@ -10,7 +10,7 @@ import { format } from "date-fns";
 
 const Orders = () => {
   const navigate = useNavigate();
-  const { orders, markOrderAsRead } = useOrders();
+  const { orders, isLoading, markOrderAsRead } = useOrders();
 
   const handleOrderClick = (orderId: string) => {
     markOrderAsRead(orderId);
@@ -42,7 +42,14 @@ const Orders = () => {
       <div className="container mx-auto px-4 py-6 max-w-4xl">
         <h1 className="text-3xl font-bold mb-6">My Orders</h1>
 
-        {orders.length === 0 ? (
+        {isLoading ? (
+          <Card>
+            <CardContent className="flex flex-col items-center justify-center py-12">
+              <Package className="h-16 w-16 text-muted-foreground mb-4" />
+              <p className="text-muted-foreground">Loading your orders...</p>
+            </CardContent>
+          </Card>
+        ) : orders.length === 0 ? (
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-12">
               <Package className="h-16 w-16 text-muted-foreground mb-4" />

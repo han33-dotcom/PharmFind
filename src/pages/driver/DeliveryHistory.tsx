@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import DriverLayout from "@/components/driver/DriverLayout";
 import { DriverService } from "@/services/driver.service";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -6,13 +6,30 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Package, DollarSign, TrendingUp } from "lucide-react";
+import { Package, DollarSign, TrendingUp, Loader2 } from "lucide-react";
+import { DeliveryOrder } from "@/types/driver.types";
+import { toast } from "sonner";
 
 const DeliveryHistory = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterPeriod, setFilterPeriod] = useState<string>("all");
-  
-  const allHistory = DriverService.getDeliveryHistory();
+  const [allHistory, setAllHistory] = useState<DeliveryOrder[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const loadHistory = async () => {
+      try {
+        setAllHistory(await DriverService.getDeliveryHistory());
+      } catch (error) {
+        console.error("Failed to load delivery history:", error);
+        toast.error("Failed to load delivery history");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    void loadHistory();
+  }, []);
 
   const filteredHistory = allHistory.filter(delivery => {
     const matchesSearch = 
@@ -27,12 +44,14 @@ const DeliveryHistory = () => {
     switch (filterPeriod) {
       case "today":
         return matchesSearch && deliveryDate.toDateString() === now.toDateString();
-      case "week":
+      case "week": {
         const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
         return matchesSearch && deliveryDate >= weekAgo;
-      case "month":
+      }
+      case "month": {
         const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
         return matchesSearch && deliveryDate >= monthAgo;
+      }
       default:
         return matchesSearch;
     }
@@ -43,6 +62,16 @@ const DeliveryHistory = () => {
   const successRate = totalDeliveries > 0 
     ? ((filteredHistory.filter(d => d.status === 'delivered').length / totalDeliveries) * 100).toFixed(1)
     : '0.0';
+
+  if (isLoading) {
+    return (
+      <DriverLayout>
+        <div className="flex justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      </DriverLayout>
+    );
+  }
 
   return (
     <DriverLayout>

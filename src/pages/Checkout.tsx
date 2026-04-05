@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Truck, Package, CheckCircle, MapPin, Phone, Pill, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -21,7 +21,7 @@ import PrescriptionUpload from "@/components/checkout/PrescriptionUpload";
 import { PrescriptionsService } from "@/services/prescriptions.service";
 import { mockMedicines } from "@/data/mock/medicines.mock";
 
-const pharmacyDetails: Record<string, any> = {
+const pharmacyDetails: Record<string, { id: number; name: string; address: string; phone: string }> = {
   "1": { id: 1, name: "Habib Pharmacy", address: "Hamra Street, Beirut", phone: "+961 1 340555" },
   "2": { id: 2, name: "Wardieh Pharmacy", address: "Achrafieh, Beirut", phone: "+961 1 200300" },
   "3": { id: 3, name: "Raouche Pharmacy", address: "Raouche, Beirut", phone: "+961 1 789456" },
@@ -66,7 +66,7 @@ const Checkout = () => {
   });
 
   // Update delivery form when saved address is selected
-  const handleAddressSelect = (addressId: string) => {
+  const handleAddressSelect = useCallback((addressId: string) => {
     setSelectedAddressId(addressId);
     const address = addresses.find((addr) => addr.id === addressId);
     if (address) {
@@ -79,7 +79,7 @@ const Checkout = () => {
         deliveryNotes: deliveryForm.deliveryNotes, // Keep existing notes
       });
     }
-  };
+  }, [addresses, deliveryForm.deliveryNotes]);
 
   // Effect to set initial address mode based on saved addresses
   useEffect(() => {
@@ -87,7 +87,7 @@ const Checkout = () => {
       setAddressMode("saved");
       handleAddressSelect(addresses[0].id);
     }
-  }, [addresses]);
+  }, [addresses, addressMode, handleAddressSelect, selectedAddressId]);
 
   const [reservationForm, setReservationForm] = useState({
     fullName: "",
@@ -228,9 +228,6 @@ const Checkout = () => {
       }
     }
 
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 500));
-
     // Save new address if requested
     if (hasDelivery && saveNewAddress && addressMode === "new") {
       const newAddress = {
@@ -259,52 +256,39 @@ const Checkout = () => {
     }
 
     const orderId = `ORD-${Date.now()}`;
-    
-    // Save order using OrdersContext
-    saveOrder({
-      orderId,
-      items: cartItems,
-      itemsByPharmacy,
-      deliveryForm: hasDelivery ? deliveryForm : null,
-      reservationForm: hasReservation ? reservationForm : null,
-      pickupTimes,
-      deliverySchedule: hasDelivery
-        ? {
-            mode: deliveryScheduleMode,
-            scheduledAt: deliveryScheduleMode === 'scheduled' ? new Date(scheduledDeliveryAt).toISOString() : undefined,
-          }
-        : undefined,
-      paymentMethod,
-      subtotal,
-      deliveryFees,
-      total,
-      prescriptionId,
-    });
-    
-    // Store order data for confirmation page (for backward compatibility)
-    const orderData = {
-      orderId,
-      items: cartItems,
-      itemsByPharmacy,
-      deliveryForm: hasDelivery ? deliveryForm : null,
-      reservationForm: hasReservation ? reservationForm : null,
-      pickupTimes,
-      deliverySchedule: hasDelivery
-        ? {
-            mode: deliveryScheduleMode,
-            scheduledAt: deliveryScheduleMode === 'scheduled' ? new Date(scheduledDeliveryAt).toISOString() : undefined,
-          }
-        : undefined,
-      paymentMethod,
-      subtotal,
-      deliveryFees,
-      total,
-      prescriptionId,
-    };
-    localStorage.setItem('current_order', JSON.stringify(orderData));
-    
-    clearCart();
-    navigate(`/order-confirmation?orderId=${orderId}`);
+
+    try {
+      await saveOrder({
+        orderId,
+        items: cartItems,
+        itemsByPharmacy,
+        deliveryForm: hasDelivery ? deliveryForm : null,
+        reservationForm: hasReservation ? reservationForm : null,
+        pickupTimes,
+        deliverySchedule: hasDelivery
+          ? {
+              mode: deliveryScheduleMode,
+              scheduledAt: deliveryScheduleMode === 'scheduled' ? new Date(scheduledDeliveryAt).toISOString() : undefined,
+            }
+          : undefined,
+        paymentMethod,
+        subtotal,
+        deliveryFees,
+        total,
+        prescriptionId,
+      });
+
+      clearCart();
+      navigate(`/order-confirmation?orderId=${orderId}`);
+    } catch (error) {
+      toast({
+        title: "Order Failed",
+        description: "We could not place your order. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (

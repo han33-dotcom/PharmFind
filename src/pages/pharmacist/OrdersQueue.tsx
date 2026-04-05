@@ -1,16 +1,33 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Clock, FileText, Phone, MapPin } from 'lucide-react';
+import { Clock, FileText, Phone, MapPin, Loader2 } from 'lucide-react';
 import PharmacistLayout from '@/components/pharmacist/PharmacistLayout';
-import { mockPharmacistOrders } from '@/data/mock/pharmacist.mock';
+import { PharmacistOrdersService } from '@/services/pharmacist-orders.service';
 import { PharmacistOrder } from '@/types/pharmacist.types';
+import { toast } from 'sonner';
 
 const OrdersQueue = () => {
-  const [orders] = useState<PharmacistOrder[]>(mockPharmacistOrders);
+  const [orders, setOrders] = useState<PharmacistOrder[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const loadOrders = async () => {
+      try {
+        setOrders(await PharmacistOrdersService.getOrders());
+      } catch (error) {
+        console.error('Failed to load pharmacist orders:', error);
+        toast.error('Failed to load pharmacy orders');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    void loadOrders();
+  }, []);
 
   const filterOrdersByStatus = (status: PharmacistOrder['status'][]) => {
     return orders.filter(o => status.includes(o.status));
@@ -19,7 +36,6 @@ const OrdersQueue = () => {
   const getStatusColor = (status: PharmacistOrder['status']) => {
     const colors = {
       pending: 'bg-yellow-100 text-yellow-800 border-yellow-300',
-      reviewing: 'bg-blue-100 text-blue-800 border-blue-300',
       accepted: 'bg-green-100 text-green-800 border-green-300',
       rejected: 'bg-red-100 text-red-800 border-red-300',
       preparing: 'bg-purple-100 text-purple-800 border-purple-300',
@@ -101,6 +117,16 @@ const OrdersQueue = () => {
     </Card>
   );
 
+  if (isLoading) {
+    return (
+      <PharmacistLayout>
+        <div className="container py-8 px-4 flex justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      </PharmacistLayout>
+    );
+  }
+
   return (
     <PharmacistLayout>
       <div className="container py-8 px-4 space-y-6">
@@ -115,9 +141,6 @@ const OrdersQueue = () => {
           <TabsList>
             <TabsTrigger value="pending">
               Pending ({filterOrdersByStatus(['pending']).length})
-            </TabsTrigger>
-            <TabsTrigger value="reviewing">
-              Reviewing ({filterOrdersByStatus(['reviewing']).length})
             </TabsTrigger>
             <TabsTrigger value="active">
               Active ({filterOrdersByStatus(['accepted', 'preparing', 'ready']).length})
@@ -137,22 +160,6 @@ const OrdersQueue = () => {
             ) : (
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {filterOrdersByStatus(['pending']).map(order => (
-                  <OrderCard key={order.id} order={order} />
-                ))}
-              </div>
-            )}
-          </TabsContent>
-
-          <TabsContent value="reviewing" className="space-y-4">
-            {filterOrdersByStatus(['reviewing']).length === 0 ? (
-              <Card>
-                <CardContent className="py-12 text-center text-muted-foreground">
-                  No orders under review
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {filterOrdersByStatus(['reviewing']).map(order => (
                   <OrderCard key={order.id} order={order} />
                 ))}
               </div>

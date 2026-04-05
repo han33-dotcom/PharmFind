@@ -3,12 +3,11 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, CheckCircle, XCircle, FileText, Phone, MapPin, Clock, Eye } from 'lucide-react';
+import { ArrowLeft, CheckCircle, XCircle, FileText, Phone, MapPin, Clock, Eye, Loader2 } from 'lucide-react';
 import PharmacistLayout from '@/components/pharmacist/PharmacistLayout';
 import { PrescriptionViewer } from '@/components/pharmacist/PrescriptionViewer';
 import { OrderActionDialog } from '@/components/pharmacist/OrderActionDialog';
 import { PharmacistOrdersService } from '@/services/pharmacist-orders.service';
-import { mockPharmacistOrders } from '@/data/mock/pharmacist.mock';
 import { PharmacistOrder } from '@/types/pharmacist.types';
 import { toast } from 'sonner';
 
@@ -16,6 +15,7 @@ const OrderReview = () => {
   const { orderId } = useParams();
   const navigate = useNavigate();
   const [order, setOrder] = useState<PharmacistOrder | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [showPrescription, setShowPrescription] = useState(false);
   const [actionDialog, setActionDialog] = useState<{ open: boolean; action: 'accept' | 'reject' }>({
     open: false,
@@ -23,10 +23,35 @@ const OrderReview = () => {
   });
 
   useEffect(() => {
-    PharmacistOrdersService.initializeFromMock(mockPharmacistOrders);
-    const foundOrder = mockPharmacistOrders.find(o => o.id === orderId);
-    setOrder(foundOrder || null);
+    const loadOrder = async () => {
+      if (!orderId) {
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        const foundOrder = await PharmacistOrdersService.getOrderById(orderId);
+        setOrder(foundOrder || null);
+      } catch (error) {
+        console.error('Failed to load pharmacist order:', error);
+        toast.error('Failed to load order');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    void loadOrder();
   }, [orderId]);
+
+  if (isLoading) {
+    return (
+      <PharmacistLayout>
+        <div className="container py-8 px-4 flex justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      </PharmacistLayout>
+    );
+  }
 
   if (!order) {
     return (
@@ -50,10 +75,12 @@ const OrderReview = () => {
 
     try {
       if (actionDialog.action === 'accept') {
-        await PharmacistOrdersService.acceptOrder(orderId);
+        const updatedOrder = await PharmacistOrdersService.acceptOrder(orderId);
+        setOrder(updatedOrder);
         toast.success('Order accepted successfully');
       } else {
-        await PharmacistOrdersService.rejectOrder(orderId, reason!);
+        const updatedOrder = await PharmacistOrdersService.rejectOrder(orderId, reason || 'Rejected by pharmacy');
+        setOrder(updatedOrder);
         toast.success('Order rejected');
       }
       navigate('/pharmacist/orders');
@@ -199,7 +226,7 @@ const OrderReview = () => {
         )}
 
         {/* Actions */}
-        {order.status === 'pending' || order.status === 'reviewing' ? (
+        {order.status === 'pending' ? (
           <Card>
             <CardHeader>
               <CardTitle>Order Actions</CardTitle>

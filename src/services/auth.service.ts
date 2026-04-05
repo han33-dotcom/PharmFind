@@ -6,11 +6,15 @@
 import { apiClient } from "./api/client";
 import { API_CONFIG } from "./api/config";
 
+export type UserRole = "patient" | "pharmacist" | "driver";
+
 export interface User {
   id: string;
   email: string;
   fullName: string;
   phone?: string;
+  role: UserRole;
+  emailVerified?: boolean;
 }
 
 export interface AuthResponse {
@@ -32,6 +36,7 @@ export class AuthService {
     password: string;
     fullName: string;
     phone?: string;
+    role: UserRole;
   }): Promise<AuthResponse> {
     if (API_CONFIG.useMockData) {
       // Mock implementation for testing
@@ -40,6 +45,8 @@ export class AuthService {
         email: data.email,
         fullName: data.fullName,
         phone: data.phone,
+        role: data.role,
+        emailVerified: false,
       };
       const mockToken = 'mock-token-' + Date.now();
       localStorage.setItem('auth_token', mockToken);
@@ -68,6 +75,8 @@ export class AuthService {
         email: data.email || 'demo@example.com',
         fullName: 'Demo User',
         phone: data.phone,
+        role: 'patient',
+        emailVerified: true,
       };
       const mockToken = 'mock-token-' + Date.now();
       localStorage.setItem('auth_token', mockToken);
@@ -95,6 +104,8 @@ export class AuthService {
         email: 'demo@example.com',
         fullName: 'Demo User',
         phone: '+961 70 123 456',
+        role: 'patient',
+        emailVerified: true,
       };
     }
 
@@ -114,6 +125,7 @@ export class AuthService {
     localStorage.removeItem('pharmfind_orders');
     localStorage.removeItem('pharmfind_addresses');
     localStorage.removeItem('pharmfind_favorites');
+    localStorage.removeItem('user_role');
     this.notifyAuthChanged();
   }
 

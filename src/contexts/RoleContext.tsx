@@ -1,51 +1,99 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { AuthService, type User } from "@/services/auth.service";
 
-export type UserRole = 'patient' | 'pharmacist' | 'driver';
+export type UserRole = "patient" | "pharmacist" | "driver";
 
 interface RoleContextType {
   role: UserRole;
-  setRole: (role: UserRole) => void;
+  user: User | null;
+  isLoading: boolean;
+  isAuthenticated: boolean;
   isPatient: boolean;
   isPharmacist: boolean;
   isDriver: boolean;
+  refreshRole: () => Promise<void>;
 }
 
 const RoleContext = createContext<RoleContextType | undefined>(undefined);
 
-export function RoleProvider({ children }: { children: ReactNode }) {
-  const [role, setRoleState] = useState<UserRole>(() => {
-    const saved = localStorage.getItem('user_role');
-    return (saved as UserRole) || 'patient';
-  });
+export const getDefaultRouteForRole = (role: UserRole) => {
+  if (role === "pharmacist") {
+    return "/pharmacist/dashboard";
+  }
 
-  const setRole = (newRole: UserRole) => {
-    setRoleState(newRole);
-    localStorage.setItem('user_role', newRole);
-  };
+  if (role === "driver") {
+    return "/driver/dashboard";
+  }
+
+  return "/dashboard";
+};
+
+export function RoleProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const refreshRole = useCallback(async () => {
+    if (!AuthService.isAuthenticated()) {
+      setUser(null);
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      const currentUser = await AuthService.getCurrentUser();
+      if (!currentUser) {
+        if (AuthService.getToken()) {
+          AuthService.logout();
+        }
+        setUser(null);
+        return;
+      }
+
+      setUser(currentUser);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    localStorage.setItem('user_role', role);
-  }, [role]);
+    void refreshRole();
 
-  return (
-    <RoleContext.Provider 
-      value={{ 
-        role, 
-        setRole,
-        isPatient: role === 'patient',
-        isPharmacist: role === 'pharmacist',
-        isDriver: role === 'driver',
-      }}
-    >
-      {children}
-    </RoleContext.Provider>
+    const handleAuthChanged = () => {
+      void refreshRole();
+    };
+
+    window.addEventListener("auth-change", handleAuthChanged);
+
+    return () => {
+      window.removeEventListener("auth-change", handleAuthChanged);
+    };
+  }, [refreshRole]);
+
+  const role = user?.role ?? "patient";
+
+  const value = useMemo(
+    () => ({
+      role,
+      user,
+      isLoading,
+      isAuthenticated: Boolean(user),
+      isPatient: role === "patient",
+      isPharmacist: role === "pharmacist",
+      isDriver: role === "driver",
+      refreshRole,
+    }),
+    [isLoading, refreshRole, role, user]
   );
+
+  return <RoleContext.Provider value={value}>{children}</RoleContext.Provider>;
 }
 
 export function useRole() {
   const context = useContext(RoleContext);
   if (!context) {
-    throw new Error('useRole must be used within RoleProvider');
+    throw new Error("useRole must be used within RoleProvider");
   }
   return context;
 }

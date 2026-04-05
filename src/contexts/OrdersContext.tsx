@@ -1,108 +1,255 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState, ReactNode } from 'react';
+import { Order as ApiOrder, OrderItem as ApiOrderItem, OrderStatus, CreateOrderData } from '@/types';
+import { OrdersService } from '@/services/orders.service';
 import { CartItem } from '@/contexts/CartContext';
 
-export type OrderStatus = 'pending' | 'confirmed' | 'preparing' | 'ready' | 'out_for_delivery' | 'delivered' | 'completed';
+export interface DeliveryFormData {
+  fullName: string;
+  phone: string;
+  address: string;
+  building: string;
+  floor: string;
+  deliveryNotes: string;
+}
 
-export interface Order {
-  orderId: string;
-  createdAt: string;
-  status: OrderStatus;
-  items: CartItem[];
+export interface ReservationFormData {
+  fullName: string;
+  phone: string;
+  pickupNotes: string;
+}
+
+export interface DeliverySchedule {
+  mode: 'now' | 'scheduled';
+  scheduledAt?: string;
+}
+
+export interface OrderMetadata {
   itemsByPharmacy: Record<number, CartItem[]>;
-  deliveryForm: any | null;
-  reservationForm: any | null;
+  deliveryForm: DeliveryFormData | null;
+  reservationForm: ReservationFormData | null;
   pickupTimes: Record<number, string>;
-  deliverySchedule?: {
-    mode: 'now' | 'scheduled';
-    scheduledAt?: string; // ISO string when mode is 'scheduled'
-  };
-  paymentMethod: string;
+  deliverySchedule?: DeliverySchedule;
+}
+
+export interface Order extends ApiOrder, OrderMetadata {}
+
+export interface CreateOrderPayload extends OrderMetadata {
+  orderId: string;
+  items: CartItem[];
   subtotal: number;
   deliveryFees: number;
   total: number;
+  paymentMethod: string;
   prescriptionId?: string;
-  statusHistory: Array<{
-    status: OrderStatus;
-    timestamp: string;
-  }>;
 }
 
 interface OrdersContextType {
   orders: Order[];
-  saveOrder: (orderData: Omit<Order, 'status' | 'statusHistory' | 'createdAt'>) => void;
+  isLoading: boolean;
+  saveOrder: (orderData: CreateOrderPayload) => Promise<Order>;
   getOrder: (orderId: string) => Order | undefined;
-  updateOrderStatus: (orderId: string, newStatus: OrderStatus) => void;
+  refreshOrders: () => Promise<void>;
+  updateOrderStatus: (orderId: string, newStatus: OrderStatus, note?: string) => Promise<Order | undefined>;
   getUnreadOrdersCount: () => number;
   markOrderAsRead: (orderId: string) => void;
 }
 
 const OrdersContext = createContext<OrdersContextType | undefined>(undefined);
 
+const READ_ORDERS_STORAGE_KEY = 'pharmfind_read_orders';
+const ORDER_METADATA_STORAGE_KEY = 'pharmfind_order_metadata';
+
+const hasAuthToken = () => Boolean(localStorage.getItem('auth_token'));
+
+const loadReadOrders = (): Set<string> => {
+  const stored = localStorage.getItem(READ_ORDERS_STORAGE_KEY);
+  return stored ? new Set(JSON.parse(stored)) : new Set();
+};
+
+const loadOrderMetadata = (): Record<string, OrderMetadata> => {
+  const stored = localStorage.getItem(ORDER_METADATA_STORAGE_KEY);
+  return stored ? JSON.parse(stored) : {};
+};
+
+const persistReadOrders = (readOrders: Set<string>) => {
+  localStorage.setItem(READ_ORDERS_STORAGE_KEY, JSON.stringify([...readOrders]));
+};
+
+const persistOrderMetadata = (orderMetadata: Record<string, OrderMetadata>) => {
+  localStorage.setItem(ORDER_METADATA_STORAGE_KEY, JSON.stringify(orderMetadata));
+};
+
+const groupItemsByPharmacy = (items: CartItem[]): Record<number, CartItem[]> =>
+  items.reduce((grouped, item) => {
+    if (!grouped[item.pharmacyId]) {
+      grouped[item.pharmacyId] = [];
+    }
+    grouped[item.pharmacyId].push(item);
+    return grouped;
+  }, {} as Record<number, CartItem[]>);
+
+const toCartItem = (item: ApiOrderItem, index: number): CartItem => ({
+  id: `${item.medicineId}-${item.pharmacyId}-${index}`,
+  medicineId: item.medicineId,
+  medicineName: item.medicineName,
+  category: '',
+  pharmacyId: item.pharmacyId,
+  pharmacyName: item.pharmacyName,
+  price: item.price,
+  quantity: item.quantity,
+  type: item.type,
+  stockStatus: 'In Stock',
+  addedAt: Date.now(),
+});
+
+const fallbackOrderMetadata = (order: ApiOrder): OrderMetadata => {
+  const cartItems = order.items.map(toCartItem);
+  const hasDelivery = order.items.some((item) => item.type === 'delivery');
+  const hasReservation = order.items.some((item) => item.type === 'reservation');
+
+  return {
+    itemsByPharmacy: groupItemsByPharmacy(cartItems),
+    deliveryForm: hasDelivery
+      ? {
+          fullName: '',
+          phone: order.phoneNumber ?? '',
+          address: order.deliveryAddress ?? '',
+          building: '',
+          floor: '',
+          deliveryNotes: '',
+        }
+      : null,
+    reservationForm: hasReservation
+      ? {
+          fullName: '',
+          phone: order.phoneNumber ?? '',
+          pickupNotes: '',
+        }
+      : null,
+    pickupTimes: {},
+    deliverySchedule: undefined,
+  };
+};
+
+const mergeOrderWithMetadata = (
+  order: ApiOrder,
+  orderMetadata: Record<string, OrderMetadata>,
+): Order => ({
+  ...order,
+  ...(orderMetadata[order.orderId] ?? fallbackOrderMetadata(order)),
+});
+
+const toCreateOrderData = (orderData: CreateOrderPayload): CreateOrderData => ({
+  orderId: orderData.orderId,
+  items: orderData.items.map((item) => ({
+    medicineId: item.medicineId,
+    medicineName: item.medicineName,
+    pharmacyId: item.pharmacyId,
+    pharmacyName: item.pharmacyName,
+    quantity: item.quantity,
+    price: item.price,
+    type: item.type,
+  })),
+  subtotal: orderData.subtotal,
+  deliveryFees: orderData.deliveryFees,
+  total: orderData.total,
+  deliveryAddress: orderData.deliveryForm
+    ? [orderData.deliveryForm.address, orderData.deliveryForm.building, orderData.deliveryForm.floor]
+        .filter(Boolean)
+        .join(', ')
+    : undefined,
+  phoneNumber: orderData.deliveryForm?.phone || orderData.reservationForm?.phone || undefined,
+  paymentMethod: orderData.paymentMethod,
+  prescriptionId: orderData.prescriptionId,
+});
+
 export const OrdersProvider = ({ children }: { children: ReactNode }) => {
-  const [orders, setOrders] = useState<Order[]>(() => {
-    const stored = localStorage.getItem('pharmfind_orders');
-    return stored ? JSON.parse(stored) : [];
-  });
-
-  const [readOrders, setReadOrders] = useState<Set<string>>(() => {
-    const stored = localStorage.getItem('pharmfind_read_orders');
-    return stored ? new Set(JSON.parse(stored)) : new Set();
-  });
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [readOrders, setReadOrders] = useState<Set<string>>(loadReadOrders);
+  const [orderMetadata, setOrderMetadata] = useState<Record<string, OrderMetadata>>(loadOrderMetadata);
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    localStorage.setItem('pharmfind_orders', JSON.stringify(orders));
-  }, [orders]);
-
-  useEffect(() => {
-    localStorage.setItem('pharmfind_read_orders', JSON.stringify([...readOrders]));
+    persistReadOrders(readOrders);
   }, [readOrders]);
 
-  const saveOrder = (orderData: Omit<Order, 'status' | 'statusHistory' | 'createdAt'>) => {
-    const newOrder: Order = {
-      ...orderData,
-      createdAt: new Date().toISOString(),
-      status: 'pending',
-      statusHistory: [{
-        status: 'pending',
-        timestamp: new Date().toISOString(),
-      }],
+  useEffect(() => {
+    persistOrderMetadata(orderMetadata);
+  }, [orderMetadata]);
+
+  const refreshOrders = useCallback(async () => {
+    if (!hasAuthToken()) {
+      setOrders([]);
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const nextOrders = await OrdersService.getOrders();
+      setOrders(nextOrders.map((order) => mergeOrderWithMetadata(order, orderMetadata)));
+    } catch (error) {
+      console.error('Failed to load orders:', error);
+      setOrders([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [orderMetadata]);
+
+  useEffect(() => {
+    void refreshOrders();
+
+    const handleAuthChange = () => {
+      if (!hasAuthToken()) {
+        setOrders([]);
+      } else {
+        void refreshOrders();
+      }
     };
-    setOrders((prev) => [newOrder, ...prev]);
+
+    window.addEventListener('auth-change', handleAuthChange);
+    return () => window.removeEventListener('auth-change', handleAuthChange);
+  }, [refreshOrders]);
+
+  const saveOrder = async (orderData: CreateOrderPayload): Promise<Order> => {
+    const metadata: OrderMetadata = {
+      itemsByPharmacy: orderData.itemsByPharmacy,
+      deliveryForm: orderData.deliveryForm,
+      reservationForm: orderData.reservationForm,
+      pickupTimes: orderData.pickupTimes,
+      deliverySchedule: orderData.deliverySchedule,
+    };
+
+    const createdOrder = await OrdersService.createOrder(toCreateOrderData(orderData));
+    const nextMetadata = {
+      ...orderMetadata,
+      [createdOrder.orderId]: metadata,
+    };
+
+    setOrderMetadata(nextMetadata);
+
+    const mergedOrder = mergeOrderWithMetadata(createdOrder, nextMetadata);
+    setOrders((prev) => [mergedOrder, ...prev.filter((order) => order.orderId !== mergedOrder.orderId)]);
+    return mergedOrder;
   };
 
-  const getOrder = (orderId: string) => {
-    return orders.find((order) => order.orderId === orderId);
-  };
+  const getOrder = (orderId: string) => orders.find((order) => order.orderId === orderId);
 
-  const updateOrderStatus = (orderId: string, newStatus: OrderStatus) => {
+  const updateOrderStatus = async (orderId: string, newStatus: OrderStatus, note?: string) => {
+    const updatedOrder = await OrdersService.updateOrderStatus(orderId, newStatus, note);
+    const mergedOrder = mergeOrderWithMetadata(updatedOrder, orderMetadata);
+
     setOrders((prev) =>
-      prev.map((order) =>
-        order.orderId === orderId
-          ? {
-              ...order,
-              status: newStatus,
-              statusHistory: [
-                ...order.statusHistory,
-                {
-                  status: newStatus,
-                  timestamp: new Date().toISOString(),
-                },
-              ],
-            }
-          : order
-      )
+      prev.map((order) => (order.orderId === orderId ? mergedOrder : order))
     );
-    // Mark as unread when status updates
     setReadOrders((prev) => {
-      const newSet = new Set(prev);
-      newSet.delete(orderId);
-      return newSet;
+      const nextReadOrders = new Set(prev);
+      nextReadOrders.delete(orderId);
+      return nextReadOrders;
     });
+    return mergedOrder;
   };
 
-  const getUnreadOrdersCount = () => {
-    return orders.filter((order) => !readOrders.has(order.orderId)).length;
-  };
+  const getUnreadOrdersCount = () => orders.filter((order) => !readOrders.has(order.orderId)).length;
 
   const markOrderAsRead = (orderId: string) => {
     setReadOrders((prev) => new Set(prev).add(orderId));
@@ -112,8 +259,10 @@ export const OrdersProvider = ({ children }: { children: ReactNode }) => {
     <OrdersContext.Provider
       value={{
         orders,
+        isLoading,
         saveOrder,
         getOrder,
+        refreshOrders,
         updateOrderStatus,
         getUnreadOrdersCount,
         markOrderAsRead,

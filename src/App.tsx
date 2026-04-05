@@ -2,12 +2,12 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Navigate, Outlet, Route, Routes } from "react-router-dom";
 import { CartProvider } from "@/contexts/CartContext";
 import { OrdersProvider } from "@/contexts/OrdersContext";
 import { AddressProvider } from "@/contexts/AddressContext";
 import { FavoritesProvider } from "@/contexts/FavoritesContext";
-import { RoleProvider } from "@/contexts/RoleContext";
+import { RoleProvider, getDefaultRouteForRole, useRole, type UserRole } from "@/contexts/RoleContext";
 import Index from "./pages/Index";
 import Favorites from "./pages/Favorites";
 import Auth from "./pages/Auth";
@@ -34,6 +34,34 @@ import DeliveryHistory from "./pages/driver/DeliveryHistory";
 
 const queryClient = new QueryClient();
 
+const AuthGate = ({
+  allowedRoles,
+  requireAuth = true,
+}: {
+  allowedRoles?: UserRole[];
+  requireAuth?: boolean;
+}) => {
+  const { isAuthenticated, isLoading, role } = useRole();
+
+  if (isLoading) {
+    return <div className="min-h-screen bg-background" />;
+  }
+
+  if (!requireAuth) {
+    return isAuthenticated ? <Navigate to={getDefaultRouteForRole(role)} replace /> : <Outlet />;
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/" replace />;
+  }
+
+  if (allowedRoles && !allowedRoles.includes(role)) {
+    return <Navigate to={getDefaultRouteForRole(role)} replace />;
+  }
+
+  return <Outlet />;
+};
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <RoleProvider>
@@ -46,30 +74,36 @@ const App = () => (
           <Sonner />
           <BrowserRouter>
           <Routes>
-            <Route path="/" element={<Auth />} />
+            <Route element={<AuthGate requireAuth={false} />}>
+              <Route path="/" element={<Auth />} />
+            </Route>
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/verify-email" element={<VerifyEmail />} />
-            <Route path="/dashboard" element={<Index />} />
-            <Route path="/user-settings" element={<UserSettings />} />
-            <Route path="/search" element={<SearchResults />} />
-            <Route path="/pharmacy/:id" element={<PharmacyStore />} />
-            <Route path="/cart" element={<Cart />} />
-            <Route path="/checkout" element={<Checkout />} />
-            <Route path="/order-confirmation" element={<OrderConfirmation />} />
-            <Route path="/orders" element={<Orders />} />
-            <Route path="/orders/:orderId" element={<OrderTracking />} />
-            <Route path="/favorites" element={<Favorites />} />
-            {/* Pharmacist Routes */}
-            <Route path="/pharmacist/dashboard" element={<PharmacistDashboard />} />
-            <Route path="/pharmacist/orders" element={<OrdersQueue />} />
-            <Route path="/pharmacist/orders/:orderId" element={<OrderReview />} />
-            <Route path="/pharmacist/inventory" element={<InventoryManagement />} />
-            <Route path="/pharmacist/profile" element={<PharmacistProfile />} />
-            {/* Driver Routes */}
-            <Route path="/driver/dashboard" element={<DriverDashboard />} />
-            <Route path="/driver/available" element={<AvailableOrders />} />
-            <Route path="/driver/active" element={<ActiveDelivery />} />
-            <Route path="/driver/history" element={<DeliveryHistory />} />
+            <Route element={<AuthGate allowedRoles={["patient"]} />}>
+              <Route path="/dashboard" element={<Index />} />
+              <Route path="/user-settings" element={<UserSettings />} />
+              <Route path="/search" element={<SearchResults />} />
+              <Route path="/pharmacy/:id" element={<PharmacyStore />} />
+              <Route path="/cart" element={<Cart />} />
+              <Route path="/checkout" element={<Checkout />} />
+              <Route path="/order-confirmation" element={<OrderConfirmation />} />
+              <Route path="/orders" element={<Orders />} />
+              <Route path="/orders/:orderId" element={<OrderTracking />} />
+              <Route path="/favorites" element={<Favorites />} />
+            </Route>
+            <Route element={<AuthGate allowedRoles={["pharmacist"]} />}>
+              <Route path="/pharmacist/dashboard" element={<PharmacistDashboard />} />
+              <Route path="/pharmacist/orders" element={<OrdersQueue />} />
+              <Route path="/pharmacist/orders/:orderId" element={<OrderReview />} />
+              <Route path="/pharmacist/inventory" element={<InventoryManagement />} />
+              <Route path="/pharmacist/profile" element={<PharmacistProfile />} />
+            </Route>
+            <Route element={<AuthGate allowedRoles={["driver"]} />}>
+              <Route path="/driver/dashboard" element={<DriverDashboard />} />
+              <Route path="/driver/available" element={<AvailableOrders />} />
+              <Route path="/driver/active" element={<ActiveDelivery />} />
+              <Route path="/driver/history" element={<DeliveryHistory />} />
+            </Route>
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

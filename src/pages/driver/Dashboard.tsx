@@ -1,15 +1,54 @@
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Package, DollarSign, List, Truck } from "lucide-react";
+import { Package, DollarSign, List, Truck, Loader2 } from "lucide-react";
 import DriverLayout from "@/components/driver/DriverLayout";
 import { DriverService } from "@/services/driver.service";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { DeliveryOrder, DriverStats } from "@/types/driver.types";
+import { toast } from "sonner";
 
 const Dashboard = () => {
   const navigate = useNavigate();
-  const stats = DriverService.getDriverStats();
-  const recentDeliveries = DriverService.getDeliveryHistory().slice(0, 5);
+  const [stats, setStats] = useState<DriverStats>({
+    todayDeliveries: 0,
+    todayEarnings: 0,
+    activeDelivery: null,
+    availableOrders: 0,
+  });
+  const [recentDeliveries, setRecentDeliveries] = useState<DeliveryOrder[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const loadDashboard = async () => {
+      try {
+        const [statsData, history] = await Promise.all([
+          DriverService.getDriverStats(),
+          DriverService.getDeliveryHistory(),
+        ]);
+        setStats(statsData);
+        setRecentDeliveries(history.slice(0, 5));
+      } catch (error) {
+        console.error("Failed to load driver dashboard:", error);
+        toast.error("Failed to load driver dashboard");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    void loadDashboard();
+  }, []);
+
+  if (isLoading) {
+    return (
+      <DriverLayout>
+        <div className="flex justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      </DriverLayout>
+    );
+  }
 
   return (
     <DriverLayout>

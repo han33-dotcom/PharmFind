@@ -24,6 +24,7 @@ export interface OrderStatusHistoryEntry {
 
 export interface Order {
   orderId: string;
+  orderNumber?: string;
   createdAt: string;
   status: OrderStatus;
   items: OrderItem[];

@@ -21,6 +21,8 @@ authApp.use(express.json());
 
 const normalizeEmail = (value) => value?.trim().toLowerCase();
 const normalizePhone = (value) => value?.trim();
+const USER_ROLES = new Set(['patient', 'pharmacist', 'driver']);
+const normalizeRole = (value) => (USER_ROLES.has(value) ? value : 'patient');
 
 const toPublicUser = (user) => ({
   id: user.id,
@@ -28,6 +30,7 @@ const toPublicUser = (user) => ({
   fullName: user.fullName,
   phone: user.phone || '',
   emailVerified: Boolean(user.emailVerified),
+  role: normalizeRole(user.role),
 });
 
 const EMAIL_CONFIG = {
@@ -79,6 +82,7 @@ authApp.post('/api/auth/register', async (req, res) => {
     const password = req.body.password;
     const fullName = req.body.fullName?.trim();
     const phone = normalizePhone(req.body.phone);
+    const role = normalizeRole(req.body.role);
 
     if (!email || !password || !fullName) {
       return res.status(400).json({
@@ -111,6 +115,7 @@ authApp.post('/api/auth/register', async (req, res) => {
       phone: phone || '',
       createdAt: new Date().toISOString(),
       emailVerified: false,
+      role,
     };
 
     const createdUser = await AuthDatabase.createUser(newUser);

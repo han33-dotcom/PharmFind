@@ -5,7 +5,6 @@ import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Menu, Package, ClipboardList, Store, LogOut, User } from 'lucide-react';
 import Logo from '@/components/Logo';
 import { AuthService } from '@/services/auth.service';
-import { useRole } from '@/contexts/RoleContext';
 import { toast } from 'sonner';
 
 interface PharmacistLayoutProps {
@@ -15,11 +14,9 @@ interface PharmacistLayoutProps {
 const PharmacistLayout = ({ children }: PharmacistLayoutProps) => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { setRole } = useRole();
 
   const handleLogout = () => {
     AuthService.logout();
-    setRole('patient');
     toast.success('Logged out successfully');
     navigate('/');
   };
