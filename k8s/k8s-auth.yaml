@@ -18,7 +18,10 @@ spec:
           imagePullPolicy: IfNotPresent
           env:
             - name: JWT_SECRET
-              value: "CHANGEME_SUPER_SECRET"
+              valueFrom:
+                secretKeyRef:
+                  name: pharmfind-secrets
+                  key: jwt-secret
             - name: FRONTEND_URL
               value: "http://localhost:5173"
             - name: EMAIL_MODE

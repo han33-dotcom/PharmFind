@@ -21,8 +21,10 @@ npm run start:pharmacies # start pharmacies service on port 4002
 npm run start:orders     # start orders service on port 4003
 npm run start:addresses  # start addresses service on port 4004
 npm run start:favorites  # start favorites service on port 4005
-# The main monolith (all routes) can still be started with:
+# Start all microservices together:
 npm start
+# The archived monolith can still be started explicitly with:
+npm run start:legacy-monolith
 ```
 
 - **Notes:** Each microservice reads the DB configuration from `DATABASE_URL` (if set) and will fallback to built-in JSON file DB if not provided.
@@ -45,7 +47,7 @@ docker compose down
 ```
 
 **Environment and secrets**
-- The compose file sets `DATABASE_URL` pointing to the `postgres` service and a placeholder `JWT_SECRET`. For local development you should create `server/.env` with secrets.
+- The compose file expects `JWT_SECRET` to be supplied from your environment or `.env` file. For local development you should create `server/.env` from `server/.env.example`.
 
 Example `server/.env` (keep out of source control):
 ```

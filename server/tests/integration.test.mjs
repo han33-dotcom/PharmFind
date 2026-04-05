@@ -35,7 +35,10 @@ const baseUrls = {
 
 const healthUrls = Object.values(baseUrls).map((baseUrl) => `${baseUrl}/health`);
 const backups = new Map();
+const capturedServiceLogs = [];
 let microservicesProcess = null;
+let microservicesExit = null;
+let microservicesExitPromise = null;
 
 const randomId = () =>
   `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
@@ -48,18 +51,49 @@ const readJsonFile = async (fileName) =>
 const writeJsonFile = async (fileName, value) =>
   fs.writeFile(getJsonFilePath(fileName), JSON.stringify(value, null, 2));
 
+const appendServiceLog = (source, chunk) => {
+  const message = chunk.toString().trim();
+  if (!message) return;
+
+  capturedServiceLogs.push(`[${source}] ${message}`);
+
+  if (capturedServiceLogs.length > 200) {
+    capturedServiceLogs.splice(0, capturedServiceLogs.length - 200);
+  }
+};
+
+const getCapturedServiceLogs = () =>
+  capturedServiceLogs.length > 0
+    ? `\nCaptured microservice output:\n${capturedServiceLogs.join('\n')}`
+    : '';
+
 const stopServices = async () => {
   if (!microservicesProcess) return;
 
-  microservicesProcess.kill('SIGTERM');
-  await once(microservicesProcess, 'exit');
+  if (!microservicesExit) {
+    microservicesProcess.kill('SIGTERM');
+  }
+
+  await microservicesExitPromise;
   microservicesProcess = null;
+  microservicesExit = null;
+  microservicesExitPromise = null;
 };
 
 const waitForHealth = async () => {
   const timeoutAt = Date.now() + 20_000;
 
   while (Date.now() < timeoutAt) {
+    if (microservicesExit) {
+      const exitReason = microservicesExit.signal
+        ? `signal ${microservicesExit.signal}`
+        : `code ${microservicesExit.code}`;
+
+      throw new Error(
+        `Microservices exited before becoming healthy (${exitReason}).${getCapturedServiceLogs()}`
+      );
+    }
+
     try {
       const responses = await Promise.all(
         healthUrls.map((url) => fetch(url).then((response) => response.ok)),
@@ -75,7 +109,7 @@ const waitForHealth = async () => {
     await new Promise((resolve) => setTimeout(resolve, 300));
   }
 
-  throw new Error('Timed out waiting for microservices to become healthy');
+  throw new Error(`Timed out waiting for microservices to become healthy.${getCapturedServiceLogs()}`);
 };
 
 const api = async (method, url, { body, token, expectedStatus = 200 } = {}) => {
@@ -107,6 +141,9 @@ const api = async (method, url, { body, token, expectedStatus = 200 } = {}) => {
 };
 
 before(async () => {
+  capturedServiceLogs.length = 0;
+  microservicesExit = null;
+
   for (const fileName of dataFiles) {
     backups.set(fileName, await fs.readFile(getJsonFilePath(fileName), 'utf8'));
     await writeJsonFile(fileName, []);
@@ -119,7 +156,14 @@ before(async () => {
       JWT_SECRET: 'integration-test-secret',
       EMAIL_MODE: 'console',
     },
-    stdio: 'ignore',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+
+  microservicesProcess.stdout?.on('data', (chunk) => appendServiceLog('stdout', chunk));
+  microservicesProcess.stderr?.on('data', (chunk) => appendServiceLog('stderr', chunk));
+  microservicesExitPromise = once(microservicesProcess, 'exit').then(([code, signal]) => {
+    microservicesExit = { code, signal };
+    return microservicesExit;
   });
 
   await waitForHealth();

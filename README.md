@@ -44,7 +44,21 @@ It runs these checks on pushes and pull requests:
 
 - `npm run lint`
 - `npm run build`
-- `npm test`
+- `npm test` (`vitest` frontend smoke tests + backend integration tests)
+
+## Local microservices setup
+
+The backend now runs as a set of microservices under [`server/`](./server). Before starting them, create `server/.env` from [`server/.env.example`](./server/.env.example) and set a real `JWT_SECRET`.
+
+Typical local flow:
+
+```sh
+npm install
+cd server
+npm install
+copy .env.example .env
+npm start
+```
 
 **Edit a file directly in GitHub**
 

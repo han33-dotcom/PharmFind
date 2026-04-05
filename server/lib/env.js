@@ -22,7 +22,9 @@ export const getJwtSecret = () => {
 
   if (process.env.NODE_ENV !== 'production') {
     const fallbackSecret = 'pharmfind-dev-insecure-jwt-secret';
-    console.warn('JWT_SECRET is not set. Falling back to an insecure development secret.');
+    console.warn(
+      'JWT_SECRET is not set. Create server/.env from server/.env.example to avoid using the insecure development fallback.'
+    );
     return fallbackSecret;
   }
 

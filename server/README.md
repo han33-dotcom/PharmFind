@@ -1,6 +1,6 @@
 # PharmFind Backend API Server
 
-This is the backend API server for the PharmFind application. It provides all the necessary endpoints for authentication, medicines, pharmacies, orders, addresses, and favorites.
+This directory contains the PharmFind backend services. The active runtime is the microservices launcher in `microservices.js`; the old monolith has been archived under `legacy/server.js`.
 
 ## Features
 
@@ -31,17 +31,22 @@ cd server
 npm install
 ```
 
-3. Start the server:
+3. Create your local env file:
+```bash
+copy .env.example .env
+```
+
+4. Start all backend services:
 ```bash
 npm start
 ```
 
-For development with auto-reload:
+To start a single service instead:
 ```bash
-npm run dev
+npm run start:auth
 ```
 
-The server will start on `http://localhost:3000`
+The services will start on `http://localhost:4000` through `http://localhost:4006`
 
 ### API Endpoints
 
@@ -101,8 +106,9 @@ The server automatically initializes sample data on first run.
 Create a `.env` file in the server directory:
 
 ```env
-PORT=3000
-JWT_SECRET=your-secret-key-change-in-production
+JWT_SECRET=replace-with-a-long-random-secret
+FRONTEND_URL=http://localhost:5173
+EMAIL_MODE=console
 ```
 
 ## Authentication
@@ -117,7 +123,7 @@ Authorization: Bearer <token>
 
 1. In the frontend directory, create a `.env` file:
 ```env
-VITE_API_BASE_URL=http://localhost:3000/api
+VITE_API_BASE_URL=http://localhost:5173
 VITE_ENABLE_MOCK_DATA=false
 ```
 
@@ -178,7 +184,7 @@ For production, consider:
 ## Troubleshooting
 
 ### Port already in use
-Change the PORT in `.env` or in `server.js`
+Change the relevant service `PORT` in `server/.env` before starting the microservices
 
 ### CORS errors
 Make sure CORS is enabled (it is by default). For production, restrict origins.

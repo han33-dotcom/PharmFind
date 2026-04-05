@@ -16,6 +16,12 @@ spec:
         - name: pharmacies-container
           image: pharmacies-service:latest
           imagePullPolicy: IfNotPresent
+          env:
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: pharmfind-secrets
+                  key: jwt-secret
           ports:
             - containerPort: 4002
 ---

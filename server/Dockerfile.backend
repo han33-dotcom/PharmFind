@@ -1,4 +1,5 @@
 # server/Dockerfile.backend
+# Legacy monolith image. Prefer the service-specific Dockerfiles for active development.
 
 ARG NODE_VERSION=20-alpine
 FROM node:${NODE_VERSION}
@@ -21,4 +22,4 @@ ENV PORT=3000
 
 EXPOSE 3000
 
-CMD ["node", "server.js"]
+CMD ["node", "legacy/server.js"]
