@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import fs from 'node:fs/promises';
+import { constants as fsConstants } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -44,6 +45,15 @@ const randomId = () =>
   `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
 
 const getJsonFilePath = (fileName) => path.join(dataDir, fileName);
+
+const fileExists = async (filePath) => {
+  try {
+    await fs.access(filePath, fsConstants.F_OK);
+    return true;
+  } catch {
+    return false;
+  }
+};
 
 const readJsonFile = async (fileName) =>
   JSON.parse(await fs.readFile(getJsonFilePath(fileName), 'utf8'));
@@ -144,8 +154,12 @@ before(async () => {
   capturedServiceLogs.length = 0;
   microservicesExit = null;
 
+  await fs.mkdir(dataDir, { recursive: true });
+
   for (const fileName of dataFiles) {
-    backups.set(fileName, await fs.readFile(getJsonFilePath(fileName), 'utf8'));
+    const filePath = getJsonFilePath(fileName);
+    const existingContents = (await fileExists(filePath)) ? await fs.readFile(filePath, 'utf8') : null;
+    backups.set(fileName, existingContents);
     await writeJsonFile(fileName, []);
   }
 
@@ -173,7 +187,14 @@ after(async () => {
   await stopServices();
 
   for (const [fileName, contents] of backups.entries()) {
-    await fs.writeFile(getJsonFilePath(fileName), contents);
+    const filePath = getJsonFilePath(fileName);
+
+    if (contents === null) {
+      await fs.rm(filePath, { force: true });
+      continue;
+    }
+
+    await fs.writeFile(filePath, contents);
   }
 });
 
