@@ -47,5 +47,9 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Run Automated Tests
+      - name: Run Frontend Smoke Tests
+        run: npm run test:frontend
+
+      - name: Run Backend Integration Tests
+        working-directory: server
         run: npm test
