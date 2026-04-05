@@ -7,6 +7,7 @@
   "scripts": {
     "start": "node microservices.js",
     "dev": "node microservices.js",
+    "test": "node --test --test-concurrency=1 tests/**/*.test.mjs",
     "start:legacy-monolith": "node server.js",
     "setup-db": "node database/setup.js",
     "start:auth": "node auth-service.js",

@@ -36,6 +36,16 @@ npm i
 npm run dev
 ```
 
+## Quality Checks
+
+The repository now has a GitHub Actions CI workflow at [ci.yml](./.github/workflows/ci.yml).
+
+It runs these checks on pushes and pull requests:
+
+- `npm run lint`
+- `npm run build`
+- `npm test`
+
 **Edit a file directly in GitHub**
 
 - Navigate to the desired file(s).
