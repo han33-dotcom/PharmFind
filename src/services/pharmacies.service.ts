@@ -7,7 +7,7 @@
 import { Pharmacy } from "@/types";
 import { API_CONFIG } from "./api/config";
 import { apiClient } from "./api/client";
-import { mockPharmacies } from "@/data/mock/pharmacies.mock";
+import { mockPharmacies } from "@/mocks/pharmacies.mock";
 
 type PharmacyUpdatePayload = {
   name?: string;
@@ -59,7 +59,7 @@ export class PharmaciesService {
    */
   static async getPharmaciesWithMedicine(medicineId: number): Promise<Pharmacy[]> {
     if (API_CONFIG.useMockData) {
-      const { mockPharmacyInventory } = await import("@/data/mock/pharmacies.mock");
+      const { mockPharmacyInventory } = await import("@/mocks/pharmacies.mock");
       
       const pharmacyIds = Object.entries(mockPharmacyInventory)
         .filter(([_, medicineIds]) => medicineIds.includes(medicineId))

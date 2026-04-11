@@ -1,101 +1,76 @@
-# Welcome to your Lovable project
+# PharmFind
 
-## Project info
+PharmFind is a React + TypeScript frontend backed by Node.js microservices for auth, medicines, pharmacies, orders, addresses, favorites, and prescriptions.
 
-**URL**: https://lovable.dev/projects/9aa89377-1dd3-4e08-a9e5-83932dc2b62b
+## Repo Layout
 
-## How can I edit this code?
+- `src/`: frontend app, routes, providers, services, contexts, and tests
+- `server/`: backend services, shared server utilities, database adapters, and integration tests
+- `infra/`: infrastructure assets
+  - `infra/docker/`: nginx config used by the frontend image
+  - `infra/k8s/`: active microservice Kubernetes manifests
+- `docs/`: setup guides and backend references
 
-There are several ways of editing your application.
+## Local Development
 
-**Use Lovable**
+Prerequisites:
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/9aa89377-1dd3-4e08-a9e5-83932dc2b62b) and start prompting.
+- Node.js 20+
+- npm
 
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
+Install dependencies:
 
 ```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+npm install
+npm --prefix server install
 ```
 
-## Quality Checks
-
-The repository now has a GitHub Actions CI workflow at [ci.yml](./.github/workflows/ci.yml).
-
-It runs these checks on pushes and pull requests:
-
-- `npm run lint`
-- `npm run build`
-- `npm test` (`vitest` frontend smoke tests + backend integration tests)
-
-## Local microservices setup
-
-The backend now runs as a set of microservices under [`server/`](./server). Before starting them, create `server/.env` from [`server/.env.example`](./server/.env.example) and set a real `JWT_SECRET`.
-
-Typical local flow:
+Create the backend env file:
 
 ```sh
-npm install
 cd server
-npm install
 copy .env.example .env
+```
+
+Start the backend microservices:
+
+```sh
+cd server
 npm start
 ```
 
-**Edit a file directly in GitHub**
+Start the frontend in a second terminal:
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+```sh
+cd ..
+npm run dev
+```
 
-**Use GitHub Codespaces**
+The frontend runs on the Vite dev server and the backend services run on ports `4000` through `4006`.
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+## Validation
 
-## What technologies are used for this project?
+The repository is set up to run:
 
-This project is built with:
+- `npm run lint`
+- `npm run build`
+- `npm test`
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+`npm test` runs frontend smoke tests with Vitest plus backend integration tests.
 
-## How can I deploy this project?
+The GitHub Actions workflow is in [`/.github/workflows/ci.yml`](./.github/workflows/ci.yml).
 
-Simply open [Lovable](https://lovable.dev/projects/9aa89377-1dd3-4e08-a9e5-83932dc2b62b) and click on Share -> Publish.
+## Docs
 
-### Docker / self-hosting
+See [docs/README.md](./docs/README.md) for the current documentation map.
 
-To run the frontend and backend as containers, follow the steps in [`DOCKER.md`](DOCKER.md). A ready-to-use `docker-compose.yml` is included for local development.
+Quick links:
 
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+- [Quick Start](./docs/guides/QUICK_START.md)
+- [Local Setup](./docs/guides/SETUP.md)
+- [Docker Guide](./docs/guides/DOCKER.md)
+- [Microservices Guide](./docs/guides/MICROSERVICES_SETUP.md)
+- [Backend Integration Reference](./docs/backend/BACKEND_INTEGRATION.md)
+- [PostgreSQL Migration Guide](./docs/backend/POSTGRES_MIGRATION.md)
+- [Infrastructure Overview](./infra/README.md)
+- [Backend Services Readme](./server/README.md)

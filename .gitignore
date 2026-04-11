@@ -27,9 +27,14 @@ dist-ssr
 .env
 .env.local
 .env.production
+server/.env
 
 # Backend data (JSON database files)
 server/data/*.json
 
 # Keep data directory but ignore contents
 !server/data/.gitkeep
+
+# Codex runtime output
+.codex-runtime-logs/
+server/.codex-logs/

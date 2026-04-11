@@ -13,4 +13,4 @@ ENV PORT=4003
 
 EXPOSE 4003
 
-CMD ["node", "orders-service.js"]
+CMD ["node", "services/orders.js"]

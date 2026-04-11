@@ -1,22 +1,21 @@
 {
-  "name": "pharmfind-backend",
+  "name": "pharmfind-services",
   "version": "1.0.0",
   "description": "PharmFind backend API server",
   "type": "module",
-  "main": "microservices.js",
+  "main": "bin/microservices.js",
   "scripts": {
-    "start": "node microservices.js",
-    "dev": "node microservices.js",
+    "start": "node bin/microservices.js",
+    "dev": "node bin/microservices.js",
     "test": "node --test --test-concurrency=1 tests/integration.test.mjs",
-    "start:legacy-monolith": "node legacy/server.js",
     "setup-db": "node database/setup.js",
-    "start:auth": "node auth-service.js",
-    "start:medicines": "node medicines-service.js",
-    "start:pharmacies": "node pharmacies-service.js",
-    "start:orders": "node orders-service.js",
-    "start:addresses": "node addresses-service.js",
-    "start:favorites": "node favorites-service.js",
-    "start:prescriptions": "node prescriptions-service.js"
+    "start:auth": "node services/auth.js",
+    "start:medicines": "node services/medicines.js",
+    "start:pharmacies": "node services/pharmacies.js",
+    "start:orders": "node services/orders.js",
+    "start:addresses": "node services/addresses.js",
+    "start:favorites": "node services/favorites.js",
+    "start:prescriptions": "node services/prescriptions.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

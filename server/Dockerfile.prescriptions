@@ -1,5 +1,5 @@
 ARG NODE_VERSION=20-alpine
-FROM node:${NODE_VERSION} AS base
+FROM node:${NODE_VERSION}
 
 WORKDIR /app
 
@@ -9,8 +9,8 @@ RUN npm ci --omit=dev
 COPY . .
 
 ENV NODE_ENV=production
-ENV PORT=4002
+ENV PORT=4006
 
-EXPOSE 4002
+EXPOSE 4006
 
-CMD ["node", "services/pharmacies.js"]
+CMD ["node", "services/prescriptions.js"]

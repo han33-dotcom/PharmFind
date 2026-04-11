@@ -163,7 +163,7 @@ before(async () => {
     await writeJsonFile(fileName, []);
   }
 
-  microservicesProcess = spawn(process.execPath, ['microservices.js'], {
+  microservicesProcess = spawn(process.execPath, ['bin/microservices.js'], {
     cwd: serverDir,
     env: {
       ...process.env,

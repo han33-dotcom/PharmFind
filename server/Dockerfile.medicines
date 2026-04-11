@@ -13,4 +13,4 @@ ENV PORT=4001
 
 EXPOSE 4001
 
-CMD ["node", "medicines-service.js"]
+CMD ["node", "services/medicines.js"]

@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prescriptions-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prescriptions-service
+  template:
+    metadata:
+      labels:
+        app: prescriptions-service
+    spec:
+      containers:
+        - name: prescriptions-container
+          image: prescriptions-service:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: pharmfind-secrets
+                  key: jwt-secret
+          ports:
+            - containerPort: 4006
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prescriptions-service
+spec:
+  selector:
+    app: prescriptions-service
+  type: NodePort
+  ports:
+    - port: 4006
+      targetPort: 4006
+      nodePort: 30406

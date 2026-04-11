@@ -13,4 +13,4 @@ ENV PORT=4005
 
 EXPOSE 4005
 
-CMD ["node", "favorites-service.js"]
+CMD ["node", "services/favorites.js"]

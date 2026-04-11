@@ -13,4 +13,4 @@ ENV PORT=4004
 
 EXPOSE 4004
 
-CMD ["node", "addresses-service.js"]
+CMD ["node", "services/addresses.js"]

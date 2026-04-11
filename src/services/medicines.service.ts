@@ -8,8 +8,8 @@
 import { Medicine, PharmacyMedicine } from "@/types";
 import { API_CONFIG } from "./api/config";
 import { apiClient } from "./api/client";
-import { mockMedicines } from "@/data/mock/medicines.mock";
-import { mockPharmacies, mockPharmacyInventory } from "@/data/mock/pharmacies.mock";
+import { mockMedicines } from "@/mocks/medicines.mock";
+import { mockPharmacies, mockPharmacyInventory } from "@/mocks/pharmacies.mock";
 
 export class MedicinesService {
   /**

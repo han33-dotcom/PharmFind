@@ -1,109 +1,72 @@
-# PharmFind Backend API Server
+# PharmFind Backend Services
 
-This directory contains the PharmFind backend services. The active runtime is the microservices launcher in `microservices.js`; the old monolith has been archived under `legacy/server.js`.
+This directory contains the active PharmFind backend microservices plus shared server utilities, database adapters, and integration tests.
+
+## Runtime Layout
+
+- `bin/`: service launcher
+- `services/`: individual microservice entrypoints
+- `lib/`: shared auth, env, and database bootstrap code
+- `database/`: JSON and PostgreSQL adapters plus schema and seed files
+- `tests/`: backend integration tests
 
 ## Features
 
-- ✅ User authentication (register/login with JWT)
-- ✅ Medicines search and management
-- ✅ Pharmacies listing and inventory
-- ✅ Orders creation and tracking
-- ✅ Address management
-- ✅ Favorites management
-- ✅ JSON file-based database (easy to use, can be replaced with real DB)
+- User authentication with JWT
+- Medicines search and catalog APIs
+- Pharmacies and inventory APIs
+- Orders, addresses, favorites, and prescriptions APIs
+- JSON-backed development mode
+- PostgreSQL support when `DATABASE_URL` is set
 
 ## Quick Start
 
-### Prerequisites
+1. Install dependencies:
 
-- Node.js 18+ installed
-- npm or yarn
-
-### Installation
-
-1. Navigate to the server directory:
 ```bash
 cd server
-```
-
-2. Install dependencies:
-```bash
 npm install
 ```
 
-3. Create your local env file:
+2. Create your local env file:
+
 ```bash
 copy .env.example .env
 ```
 
-4. Start all backend services:
+3. Start all backend services:
+
 ```bash
 npm start
 ```
 
 To start a single service instead:
+
 ```bash
 npm run start:auth
 ```
 
-The services will start on `http://localhost:4000` through `http://localhost:4006`
-
-### API Endpoints
-
-All endpoints are prefixed with `/api`
-
-#### Authentication
-- `POST /api/auth/register` - Register a new user
-- `POST /api/auth/login` - Login user
-- `GET /api/auth/me` - Get current user (requires auth)
-
-#### Medicines
-- `GET /api/medicines` - Search medicines
-- `GET /api/medicines/:id` - Get medicine by ID
-- `GET /api/medicines/categories` - Get all categories
-
-#### Pharmacies
-- `GET /api/pharmacies` - Get all pharmacies
-- `GET /api/pharmacies/:id` - Get pharmacy by ID
-- `GET /api/pharmacies/:id/medicines` - Get pharmacy inventory
-
-#### Orders (requires authentication)
-- `POST /api/orders` - Create new order
-- `GET /api/orders` - Get user's orders
-- `GET /api/orders/:orderId` - Get order by ID
-- `PATCH /api/orders/:orderId/status` - Update order status
-
-#### Addresses (requires authentication)
-- `GET /api/users/me/addresses` - Get user addresses
-- `POST /api/users/me/addresses` - Create address
-- `PUT /api/users/me/addresses/:id` - Update address
-- `DELETE /api/users/me/addresses/:id` - Delete address
-
-#### Favorites (requires authentication)
-- `GET /api/users/me/favorites` - Get user favorites
-- `POST /api/users/me/favorites` - Add favorite
-- `DELETE /api/users/me/favorites/:medicineId` - Remove favorite
-- `GET /api/users/me/favorites/:medicineId/exists` - Check if favorite
+The services listen on `http://localhost:4000` through `http://localhost:4006`.
 
 ## Database
 
-The server uses a simple JSON file-based database stored in the `server/data/` directory. This is perfect for development and testing. For production, replace with a real database (PostgreSQL, MongoDB, etc.).
+By default, the backend uses JSON files under `server/data/` for development and automated tests.
 
-### Data Files
+If `DATABASE_URL` is set, the shared database layer switches to PostgreSQL. See [../docs/backend/POSTGRES_MIGRATION.md](../docs/backend/POSTGRES_MIGRATION.md) for the migration guide.
 
-- `users.json` - User accounts
-- `medicines.json` - Medicine catalog
-- `pharmacies.json` - Pharmacy listings
-- `pharmacy_inventory.json` - Medicine availability at pharmacies
-- `orders.json` - Customer orders
-- `addresses.json` - User addresses
-- `favorites.json` - User favorites
+Main JSON data files:
 
-The server automatically initializes sample data on first run.
+- `users.json`
+- `medicines.json`
+- `pharmacies.json`
+- `pharmacy_inventory.json`
+- `orders.json`
+- `addresses.json`
+- `favorites.json`
 
 ## Environment Variables
 
-Create a `.env` file in the server directory:
+Create `server/.env` with at least:
 
 ```env
 JWT_SECRET=replace-with-a-long-random-secret
@@ -111,88 +74,44 @@ FRONTEND_URL=http://localhost:5173
 EMAIL_MODE=console
 ```
 
-## Authentication
+Optional:
 
-The API uses JWT (JSON Web Tokens) for authentication. After successful login or registration, the client receives a token that should be included in subsequent requests:
-
-```
-Authorization: Bearer <token>
-```
-
-## Frontend Integration
-
-1. In the frontend directory, create a `.env` file:
 ```env
-VITE_API_BASE_URL=http://localhost:5173
-VITE_ENABLE_MOCK_DATA=false
+DATABASE_URL=postgresql://username:password@localhost:5432/pharmfind
+DATABASE_SSL=false
 ```
 
-2. Start the backend server first, then start the frontend:
-```bash
-# Terminal 1: Backend
-cd server
-npm start
+## API Surface
 
-# Terminal 2: Frontend
-cd .. # (back to project root)
-npm run dev
-```
+All endpoints are prefixed with `/api`.
+
+Main groups:
+
+- `/auth`
+- `/medicines`
+- `/pharmacies`
+- `/orders`
+- `/users/me/addresses`
+- `/users/me/favorites`
+- `/prescriptions`
 
 ## Testing
 
-You can test the API using tools like:
-- Postman
-- Insomnia
-- cURL
-- Browser DevTools Network tab
+Run backend integration tests with:
 
-### Example: Register a user
 ```bash
-curl -X POST http://localhost:3000/api/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "test@example.com",
-    "password": "password123",
-    "fullName": "Test User",
-    "phone": "+961 70 123 456"
-  }'
+npm test
 ```
 
-### Example: Login
+That executes `tests/integration.test.mjs`.
+
+## Frontend Integration
+
+The frontend lives in the repo root. Start the backend first, then in a second terminal:
+
 ```bash
-curl -X POST http://localhost:3000/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "test@example.com",
-    "password": "password123"
-  }'
+cd ..
+npm run dev
 ```
 
-## Production Deployment
-
-For production, consider:
-
-1. **Replace JSON database** with a real database (PostgreSQL recommended)
-2. **Set strong JWT_SECRET** in environment variables
-3. **Enable HTTPS** for secure connections
-4. **Add rate limiting** to prevent abuse
-5. **Set up logging** for monitoring
-6. **Add input validation** and sanitization
-7. **Enable CORS** only for your frontend domain
-8. **Add database backups**
-
-## Troubleshooting
-
-### Port already in use
-Change the relevant service `PORT` in `server/.env` before starting the microservices
-
-### CORS errors
-Make sure CORS is enabled (it is by default). For production, restrict origins.
-
-### Database errors
-Check that the `server/data/` directory exists and is writable.
-
-## License
-
-Part of the PharmFind project.
-
+The frontend uses service-specific API base URLs for auth, medicines, pharmacies, orders, addresses, favorites, and prescriptions.
