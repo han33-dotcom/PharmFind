@@ -5,7 +5,7 @@ import reactRefresh from "eslint-plugin-react-refresh";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["dist", "vite.config.ts.timestamp-*.mjs"] },
+  { ignores: ["dist", "playwright-report", "test-results", ".e2e-runtime", "vite.config.ts.timestamp-*.mjs"] },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     files: ["**/*.{ts,tsx}"],
@@ -27,6 +27,14 @@ export default tseslint.config(
     files: ["src/components/ui/**/*.{ts,tsx}", "src/contexts/**/*.{ts,tsx}"],
     rules: {
       "react-refresh/only-export-components": "off",
+    },
+  },
+  {
+    files: ["playwright.config.ts", "tests/e2e/**/*.ts"],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+      },
     },
   },
 );

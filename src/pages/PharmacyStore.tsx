@@ -284,6 +284,7 @@ const PharmacyStore = () => {
                 <Card
                   key={medicine.id}
                   ref={isHighlighted ? highlightRef : null}
+                  data-testid={`medicine-card-${medicine.id}`}
                   className={isHighlighted ? "animate-pulse border-primary shadow-lg relative" : "relative"}
                 >
                   <Button
@@ -341,6 +342,7 @@ const PharmacyStore = () => {
                         <Button
                           size="sm"
                           className="w-full"
+                          data-testid={`open-add-to-cart-${medicine.id}`}
                           onClick={() => handleOpenDialog(medicine)}
                           disabled={medicine.stockStatus === "Out of Stock"}
                         >
@@ -403,7 +405,7 @@ const PharmacyStore = () => {
                           <Button variant="outline" onClick={() => setDialogOpen(false)}>
                             Cancel
                           </Button>
-                          <Button onClick={handleAddToCart}>Add to Cart</Button>
+                          <Button onClick={handleAddToCart} data-testid={`confirm-add-to-cart-${medicine.id}`}>Add to Cart</Button>
                         </DialogFooter>
                       </DialogContent>
                     </Dialog>

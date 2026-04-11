@@ -46,7 +46,7 @@ const OrdersQueue = () => {
   };
 
   const OrderCard = ({ order }: { order: PharmacistOrder }) => (
-    <Card className="hover:shadow-md transition-shadow">
+    <Card className="hover:shadow-md transition-shadow" data-testid={`pharmacist-order-${order.id}`}>
       <CardHeader>
         <div className="flex items-start justify-between">
           <div className="space-y-1">
@@ -109,7 +109,7 @@ const OrdersQueue = () => {
         )}
 
         <Link to={`/pharmacist/orders/${order.id}`}>
-          <Button className="w-full">
+          <Button className="w-full" data-testid={`review-order-${order.id}`}>
             Review Order
           </Button>
         </Link>

@@ -55,8 +55,15 @@ The repository is set up to run:
 - `npm run lint`
 - `npm run build`
 - `npm test`
+- `npm run test:e2e`
 
 `npm test` runs frontend smoke tests with Vitest plus backend integration tests.
+
+`npm run test:e2e` runs Playwright browser coverage for:
+
+- patient checkout
+- pharmacist order acceptance
+- driver delivery lifecycle
 
 The GitHub Actions workflow is in [`/.github/workflows/ci.yml`](./.github/workflows/ci.yml).
 

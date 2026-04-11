@@ -37,7 +37,7 @@ const DeliveryOrderCard = ({
   };
 
   return (
-    <Card className="hover:shadow-md transition-shadow">
+    <Card className="hover:shadow-md transition-shadow" data-testid={`delivery-order-${order.id}`}>
       <CardHeader>
         <div className="flex items-start justify-between">
           <div>
@@ -99,6 +99,7 @@ const DeliveryOrderCard = ({
             <Button 
               onClick={() => onAccept(order.id)} 
               className="flex-1"
+              data-testid={`accept-delivery-${order.id}`}
             >
               Accept Order
             </Button>

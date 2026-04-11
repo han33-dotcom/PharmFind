@@ -38,3 +38,8 @@ server/data/*.json
 # Codex runtime output
 .codex-runtime-logs/
 server/.codex-logs/
+
+# Playwright
+playwright-report/
+test-results/
+.e2e-runtime/
