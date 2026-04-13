@@ -1,17 +1,17 @@
 import express from 'express';
-import cors from 'cors';
 import { authenticateToken } from '../lib/auth.js';
 import { loadDatabase } from '../lib/database.js';
-import { getEnv, loadServiceEnvironment } from '../lib/env.js';
+import { getNumberEnv, loadServiceEnvironment, validateServiceEnvironment } from '../lib/env.js';
+import { applyCommonMiddleware, sendHealthResponse } from '../lib/http.js';
 
 loadServiceEnvironment();
+validateServiceEnvironment('pharmacies-service', { defaultPort: 4002 });
 
 const PharmDatabase = await loadDatabase('pharmacies-service');
 const pharmApp = express();
-const PHARM_PORT = Number(getEnv('PORT', '4002'));
+const PHARM_PORT = getNumberEnv('PORT', '4002');
 
-pharmApp.use(cors());
-pharmApp.use(express.json());
+applyCommonMiddleware(pharmApp);
 
 const formatTimeValue = (value) => {
   if (!value) return undefined;
@@ -109,7 +109,7 @@ const ensureOwnedPharmacy = async (req, res) => {
 };
 
 pharmApp.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', service: 'pharmacies', timestamp: new Date().toISOString() });
+  sendHealthResponse(res, 'pharmacies');
 });
 
 pharmApp.post('/api/pharmacies/register', authenticateToken, async (req, res) => {
@@ -304,10 +304,18 @@ pharmApp.patch('/api/pharmacies/me/inventory/:medicineId', authenticateToken, as
     if (!pharmacy) return;
 
     const medicineId = Number(req.params.medicineId);
+    if (!Number.isFinite(medicineId)) {
+      return res.status(400).json({ error: { message: 'Invalid medicine id', status: 400 } });
+    }
+
     const updates = {};
 
     if (req.body.price !== undefined) {
-      updates.price = Number(req.body.price);
+      const price = Number(req.body.price);
+      if (!Number.isFinite(price) || price < 0) {
+        return res.status(400).json({ error: { message: 'Price must be a valid non-negative number', status: 400 } });
+      }
+      updates.price = price;
     }
 
     if (req.body.stockStatus !== undefined) {
@@ -315,7 +323,16 @@ pharmApp.patch('/api/pharmacies/me/inventory/:medicineId', authenticateToken, as
     }
 
     if (req.body.quantity !== undefined) {
-      updates.quantity = Number(req.body.quantity);
+      const quantity = Number(req.body.quantity);
+      if (!Number.isFinite(quantity) || quantity < 0) {
+        return res.status(400).json({ error: { message: 'Quantity must be a valid non-negative number', status: 400 } });
+      }
+      updates.quantity = quantity;
+      updates.stockStatus = deriveStockStatus(quantity);
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ error: { message: 'No valid updates provided', status: 400 } });
     }
 
     const updatedItem = await PharmDatabase.updateInventoryItem(Number(pharmacy.id), medicineId, updates);
@@ -331,6 +348,28 @@ pharmApp.patch('/api/pharmacies/me/inventory/:medicineId', authenticateToken, as
     return res.json(mapInventoryItem(fullItem ?? updatedItem));
   } catch (error) {
     console.error('Error updating owned pharmacy inventory:', error);
+    return res.status(500).json({ error: { message: 'Internal server error', status: 500 } });
+  }
+});
+
+pharmApp.delete('/api/pharmacies/me/inventory/:medicineId', authenticateToken, async (req, res) => {
+  try {
+    const pharmacy = await ensureOwnedPharmacy(req, res);
+    if (!pharmacy) return;
+
+    const medicineId = Number(req.params.medicineId);
+    if (!Number.isFinite(medicineId)) {
+      return res.status(400).json({ error: { message: 'Invalid medicine id', status: 400 } });
+    }
+
+    const deleted = await PharmDatabase.deleteInventoryItem(Number(pharmacy.id), medicineId);
+    if (!deleted) {
+      return res.status(404).json({ error: { message: 'Inventory item not found', status: 404 } });
+    }
+
+    return res.status(204).send();
+  } catch (error) {
+    console.error('Error deleting owned pharmacy inventory item:', error);
     return res.status(500).json({ error: { message: 'Internal server error', status: 500 } });
   }
 });

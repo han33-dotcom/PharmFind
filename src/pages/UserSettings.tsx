@@ -436,6 +436,15 @@ const UserSettings = () => {
                       /* Address List View */
                       <div className="space-y-4">
                         <div className="space-y-3">
+                          {addresses.length === 0 ? (
+                            <div className="rounded-lg border border-dashed p-6 text-center">
+                              <Home className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+                              <h3 className="font-semibold mb-2">No saved addresses yet</h3>
+                              <p className="text-sm text-muted-foreground">
+                                Add a delivery address now to make checkout faster later.
+                              </p>
+                            </div>
+                          ) : null}
                           {addresses.map((address) => (
                             <div
                               key={address.id}
@@ -558,7 +567,16 @@ const UserSettings = () => {
 
                         {/* Action Buttons */}
                         <div className="flex gap-2">
-                          <Button className="flex-1" size="lg" onClick={handleSaveAddress}>
+                          <Button
+                            className="flex-1"
+                            size="lg"
+                            onClick={handleSaveAddress}
+                            disabled={
+                              !currentAddress.fullName?.trim() ||
+                              !currentAddress.address?.trim() ||
+                              !currentAddress.phoneNumber?.trim()
+                            }
+                          >
                             Confirm
                           </Button>
                           <Button variant="outline" size="lg" onClick={handleCancelEdit}>

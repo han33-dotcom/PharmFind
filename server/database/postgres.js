@@ -401,6 +401,18 @@ class PostgresDatabase {
     return result.rows[0] || null;
   }
 
+  async deleteInventoryItem(pharmacyId, medicineId) {
+    const result = await this.pool.query(
+      `
+        DELETE FROM pharmacy_inventory
+        WHERE pharmacy_id = $1 AND medicine_id = $2
+        RETURNING medicine_id
+      `,
+      [pharmacyId, medicineId]
+    );
+    return result.rows.length > 0;
+  }
+
   // ==================== Order Operations ====================
   async createOrder(order) {
     const client = await this.pool.connect();

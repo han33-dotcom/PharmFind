@@ -46,6 +46,7 @@ export interface CreateOrderPayload extends OrderMetadata {
 interface OrdersContextType {
   orders: Order[];
   isLoading: boolean;
+  errorMessage: string | null;
   saveOrder: (orderData: CreateOrderPayload) => Promise<Order>;
   getOrder: (orderId: string) => Order | undefined;
   refreshOrders: () => Promise<void>;
@@ -140,6 +141,11 @@ const mergeOrderWithMetadata = (
   ...(orderMetadata[order.orderId] ?? fallbackOrderMetadata(order)),
 });
 
+const sortOrders = (items: Order[]) =>
+  [...items].sort(
+    (left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime(),
+  );
+
 const toCreateOrderData = (orderData: CreateOrderPayload): CreateOrderData => ({
   orderId: orderData.orderId,
   items: orderData.items.map((item) => ({
@@ -170,6 +176,7 @@ export const OrdersProvider = ({ children }: { children: ReactNode }) => {
   const [readOrders, setReadOrders] = useState<Set<string>>(loadReadOrders);
   const [orderMetadata, setOrderMetadata] = useState<Record<string, OrderMetadata>>(loadOrderMetadata);
   const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     persistReadOrders(readOrders);
@@ -182,16 +189,19 @@ export const OrdersProvider = ({ children }: { children: ReactNode }) => {
   const refreshOrders = useCallback(async () => {
     if (!hasAuthToken()) {
       setOrders([]);
+      setErrorMessage(null);
       return;
     }
 
     setIsLoading(true);
     try {
       const nextOrders = await OrdersService.getOrders();
-      setOrders(nextOrders.map((order) => mergeOrderWithMetadata(order, orderMetadata)));
+      setOrders(sortOrders(nextOrders.map((order) => mergeOrderWithMetadata(order, orderMetadata))));
+      setErrorMessage(null);
     } catch (error) {
       console.error('Failed to load orders:', error);
       setOrders([]);
+      setErrorMessage('We could not load your orders right now.');
     } finally {
       setIsLoading(false);
     }
@@ -230,7 +240,10 @@ export const OrdersProvider = ({ children }: { children: ReactNode }) => {
     setOrderMetadata(nextMetadata);
 
     const mergedOrder = mergeOrderWithMetadata(createdOrder, nextMetadata);
-    setOrders((prev) => [mergedOrder, ...prev.filter((order) => order.orderId !== mergedOrder.orderId)]);
+    setOrders((prev) =>
+      sortOrders([mergedOrder, ...prev.filter((order) => order.orderId !== mergedOrder.orderId)])
+    );
+    setErrorMessage(null);
     return mergedOrder;
   };
 
@@ -241,7 +254,7 @@ export const OrdersProvider = ({ children }: { children: ReactNode }) => {
     const mergedOrder = mergeOrderWithMetadata(updatedOrder, orderMetadata);
 
     setOrders((prev) =>
-      prev.map((order) => (order.orderId === orderId ? mergedOrder : order))
+      sortOrders(prev.map((order) => (order.orderId === orderId ? mergedOrder : order)))
     );
     setReadOrders((prev) => {
       const nextReadOrders = new Set(prev);
@@ -262,6 +275,7 @@ export const OrdersProvider = ({ children }: { children: ReactNode }) => {
       value={{
         orders,
         isLoading,
+        errorMessage,
         saveOrder,
         getOrder,
         refreshOrders,

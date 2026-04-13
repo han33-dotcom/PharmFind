@@ -21,10 +21,9 @@ npm run start:pharmacies # start pharmacies service on port 4002
 npm run start:orders     # start orders service on port 4003
 npm run start:addresses  # start addresses service on port 4004
 npm run start:favorites  # start favorites service on port 4005
+npm run start:prescriptions # start prescriptions service on port 4006
 # Start all microservices together:
 npm start
-# The archived monolith can still be started explicitly with:
-npm run start:legacy-monolith
 ```
 
 - **Notes:** Each microservice reads the DB configuration from `DATABASE_URL` (if set) and will fallback to built-in JSON file DB if not provided.
@@ -53,6 +52,8 @@ Example `server/.env` (keep out of source control):
 ```
 DATABASE_URL=postgres://pharm:pharm@postgres:5432/pharmdb
 JWT_SECRET=your_local_secret_here
+FRONTEND_URL=http://localhost:8082
+ALLOWED_ORIGINS=http://localhost:8082,http://127.0.0.1:4173
 SMTP_USER=
 SMTP_PASS=
 EMAIL_MODE=console

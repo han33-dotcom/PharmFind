@@ -1,16 +1,16 @@
 import express from 'express';
-import cors from 'cors';
 import { loadDatabase } from '../lib/database.js';
-import { getEnv, loadServiceEnvironment } from '../lib/env.js';
+import { getNumberEnv, loadServiceEnvironment, validateServiceEnvironment } from '../lib/env.js';
+import { applyCommonMiddleware, sendHealthResponse } from '../lib/http.js';
 
 loadServiceEnvironment();
+validateServiceEnvironment('medicines-service', { defaultPort: 4001 });
 
 const MedicinesDatabase = await loadDatabase('medicines-service');
 const medicinesApp = express();
-const MED_PORT = Number(getEnv('PORT', '4001'));
+const MED_PORT = getNumberEnv('PORT', '4001');
 
-medicinesApp.use(cors());
-medicinesApp.use(express.json());
+applyCommonMiddleware(medicinesApp);
 
 const mapMedicine = (medicine) => ({
   id: Number(medicine.id),
@@ -51,7 +51,7 @@ const findAvailableMedicines = async (searchQuery) => {
 };
 
 medicinesApp.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', service: 'medicines', timestamp: new Date().toISOString() });
+  sendHealthResponse(res, 'medicines');
 });
 
 medicinesApp.get('/api/medicines', async (req, res) => {

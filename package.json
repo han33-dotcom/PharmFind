@@ -8,6 +8,8 @@
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
+    "validate": "npm run lint && npm run build && npm test && npm run test:e2e",
+    "validate:quick": "npm run lint && npm run build && npm test",
     "test": "npm run test:frontend && npm run test:server",
     "test:frontend": "vitest run",
     "test:server": "npm --prefix server test",

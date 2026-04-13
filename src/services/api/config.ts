@@ -6,7 +6,7 @@
 
 export const API_CONFIG = {
   // Fallback API base URL for environments with a gateway in front of the microservices.
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api',
+  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000/api',
   authBaseURL: import.meta.env.VITE_AUTH_API_URL || 'http://localhost:4000/api',
   medicinesBaseURL: import.meta.env.VITE_MEDICINES_API_URL || 'http://localhost:4001/api',
   pharmaciesBaseURL: import.meta.env.VITE_PHARMACIES_API_URL || 'http://localhost:4002/api',

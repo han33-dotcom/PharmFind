@@ -1,18 +1,18 @@
 import express from 'express';
-import cors from 'cors';
 import { v4 as uuidv4 } from 'uuid';
 import { authenticateToken } from '../lib/auth.js';
 import { loadDatabase } from '../lib/database.js';
-import { getEnv, loadServiceEnvironment } from '../lib/env.js';
+import { getNumberEnv, loadServiceEnvironment, validateServiceEnvironment } from '../lib/env.js';
+import { applyCommonMiddleware, sendHealthResponse } from '../lib/http.js';
 
 loadServiceEnvironment();
+validateServiceEnvironment('addresses-service', { defaultPort: 4004 });
 
 const AddressesDatabase = await loadDatabase('addresses-service');
 const addressesApp = express();
-const ADDR_PORT = Number(getEnv('PORT', '4004'));
+const ADDR_PORT = getNumberEnv('PORT', '4004');
 
-addressesApp.use(cors());
-addressesApp.use(express.json());
+applyCommonMiddleware(addressesApp);
 
 const mapAddress = (address) => ({
   id: address.id,
@@ -29,7 +29,7 @@ const compactObject = (value) =>
   Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined));
 
 addressesApp.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', service: 'addresses', timestamp: new Date().toISOString() });
+  sendHealthResponse(res, 'addresses');
 });
 
 addressesApp.get('/api/users/me/addresses', authenticateToken, async (req, res) => {

@@ -80,7 +80,7 @@ test("patient can place a prescription checkout order in the browser", async ({ 
   await page.getByRole("button", { name: "Place Order" }).click();
 
   await expect(page).toHaveURL(/\/order-confirmation\?orderId=/);
-  await expect(page.getByRole("heading", { name: "Order Placed Successfully!" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Order placed successfully" })).toBeVisible();
   await expect(page.getByText("Augmentin 1g x 1")).toBeVisible();
   await page.getByRole("button", { name: "Track Order" }).click();
   await expect(page).toHaveURL(/\/orders\/ORD-/);
@@ -272,4 +272,80 @@ test("driver can accept and complete a delivery in the browser", async ({ page, 
     patient.token,
   );
   expect(deliveredOrder.status).toBe("Delivered");
+});
+
+test("pharmacist can update and remove inventory items in the browser", async ({ page, request }) => {
+  const suffix = randomId("inventory-maintenance");
+  const pharmacist = await registerUser(request, "pharmacist", suffix);
+
+  await postJson(
+    request,
+    `${apiBaseUrls.pharmacies}/pharmacies/register`,
+    {
+      name: `Inventory Pharmacy ${suffix}`,
+      address: "Inventory Street, Beirut",
+      phone: "+96119990000",
+      hours: { open: "08:00", close: "22:00" },
+    },
+    pharmacist.token,
+    201,
+  );
+
+  await postJson(
+    request,
+    `${apiBaseUrls.pharmacies}/pharmacies/me/inventory`,
+    {
+      medicineId: 1,
+      price: 25,
+      quantity: 12,
+    },
+    pharmacist.token,
+    201,
+  );
+
+  await postJson(
+    request,
+    `${apiBaseUrls.pharmacies}/pharmacies/me/inventory`,
+    {
+      medicineId: 3,
+      price: 40,
+      quantity: 6,
+    },
+    pharmacist.token,
+    201,
+  );
+
+  await loginViaUi(page, pharmacist.user.email, "StrongPass123!", "/pharmacist/dashboard");
+  await page.goto("/pharmacist/inventory");
+
+  const panadolRow = page.getByTestId("inventory-item-1");
+  await expect(panadolRow).toBeVisible();
+  await page.getByTestId("edit-inventory-item-1").click();
+  await page.getByTestId("inventory-price-input-1").fill("29");
+  await page.getByTestId("inventory-quantity-input-1").fill("4");
+  await page.getByTestId("save-inventory-item-1").click();
+  await expect(panadolRow.getByText("Low Stock")).toBeVisible();
+  await expect(panadolRow.getByText("29")).toBeVisible();
+  await expect(panadolRow.getByText("4 units")).toBeVisible();
+
+  const vitaminRow = page.getByTestId("inventory-item-3");
+  await expect(vitaminRow).toBeVisible();
+  await page.getByTestId("delete-inventory-item-3").click();
+  await page.getByRole("button", { name: "Remove" }).click();
+  await expect(vitaminRow).toHaveCount(0);
+
+  const inventory = await getJson<{ data: Array<{ medicineId: number; price: number; stockStatus: string; stockLevel: number }> }>(
+    request,
+    `${apiBaseUrls.pharmacies}/pharmacies/me/inventory`,
+    pharmacist.token,
+  );
+
+  expect(inventory.data).toEqual([
+    expect.objectContaining({
+      medicineId: 1,
+      price: 29,
+      stockStatus: "Low Stock",
+      stockLevel: 4,
+    }),
+  ]);
 });

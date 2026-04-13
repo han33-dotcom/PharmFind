@@ -13,6 +13,7 @@ import { toast } from "@/hooks/use-toast";
 import { MedicinesService } from "@/services/medicines.service";
 import { PharmaciesService } from "@/services/pharmacies.service";
 import { Pharmacy, PharmacyMedicine } from "@/types";
+import { formatCurrency } from "@/lib/formatters";
 
 type SearchMedicineResult = {
   id: number;
@@ -239,7 +240,7 @@ const SearchResults = () => {
                       <CardContent>
                         <div className="flex items-center justify-between mb-3">
                           <span className="text-2xl font-bold text-primary">
-                            ${medicine.lowestPrice.toFixed(2)}
+                            {formatCurrency(medicine.lowestPrice)}
                           </span>
                           <span className="text-sm text-muted-foreground">
                             Available at {medicine.availableAt} pharmacies
@@ -354,7 +355,7 @@ const SearchResults = () => {
 const EmptyState = ({ message }: { message: string }) => (
   <div className="text-center py-12">
     <Pill className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-    <p className="text-muted-foreground">{message}</p>
+            <p className="text-muted-foreground">{message}</p>
   </div>
 );
 

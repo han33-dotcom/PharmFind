@@ -1,6 +1,17 @@
 import { useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, MapPin, Phone, Pill, CheckCircle, Clock, ShoppingCart, Plus, Heart } from "lucide-react";
+import {
+  ArrowLeft,
+  CheckCircle,
+  Clock,
+  Heart,
+  MapPin,
+  Phone,
+  Pill,
+  Plus,
+  Receipt,
+  ShoppingCart,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -10,11 +21,16 @@ import { useOrders } from "@/contexts/OrdersContext";
 import { useCart, CartItem } from "@/contexts/CartContext";
 import { useFavorites } from "@/contexts/FavoritesContext";
 import { OrderStatusBadge } from "@/components/OrderStatusBadge";
-import { format } from "date-fns";
 import { MockOrderControls } from "@/components/MockOrderControls";
 import { usePharmacyDetails } from "@/hooks/usePharmacyDetails";
 import { toast } from "@/hooks/use-toast";
 import { OrderStatus } from "@/types";
+import {
+  formatCurrency,
+  formatDateTime,
+  formatItemCount,
+  formatPaymentMethod,
+} from "@/lib/formatters";
 
 const timeSlotLabels: Record<string, string> = {
   morning: "Morning (9 AM - 12 PM)",
@@ -22,18 +38,18 @@ const timeSlotLabels: Record<string, string> = {
   evening: "Evening (5 PM - 9 PM)",
 };
 
-const statusTimeline: OrderStatus[] = ['Pending', 'Confirmed', 'Preparing'];
-const deliveryStatuses: OrderStatus[] = ['Out for Delivery', 'Delivered'];
+const statusTimeline: OrderStatus[] = ["Pending", "Confirmed", "Preparing"];
+const deliveryStatuses: OrderStatus[] = ["Out for Delivery", "Delivered"];
 
 const OrderTracking = () => {
   const { orderId } = useParams<{ orderId: string }>();
   const navigate = useNavigate();
-  const { getOrder, isLoading, markOrderAsRead, refreshOrders } = useOrders();
+  const { getOrder, isLoading, errorMessage, markOrderAsRead, refreshOrders } = useOrders();
   const { addToCart } = useCart();
   const { addFavorite, isFavorite } = useFavorites();
 
   const order = orderId ? getOrder(orderId) : undefined;
-  const pharmacyDetails = usePharmacyDetails(
+  const { pharmacyDetails, isLoading: isLoadingPharmacies } = usePharmacyDetails(
     order ? Object.keys(order.itemsByPharmacy).map((pharmacyId) => Number(pharmacyId)) : [],
   );
 
@@ -57,14 +73,19 @@ const OrderTracking = () => {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center space-y-4">
-          <p className="text-muted-foreground">We could not find that order.</p>
-          <Button onClick={() => navigate("/orders")}>Go to My Orders</Button>
+          <p className="text-muted-foreground">{errorMessage ?? "We could not find that order."}</p>
+          <div className="flex items-center justify-center gap-3">
+            <Button variant="outline" onClick={() => void refreshOrders()}>
+              Try Again
+            </Button>
+            <Button onClick={() => navigate("/orders")}>Go to My Orders</Button>
+          </div>
         </div>
       </div>
     );
   }
 
-  const hasDelivery = order.items.some((item) => item.type === 'delivery');
+  const hasDelivery = order.items.some((item) => item.type === "delivery");
   const timeline = hasDelivery ? [...statusTimeline, ...deliveryStatuses] : statusTimeline;
   const currentStatusIndex = timeline.indexOf(order.status);
 
@@ -77,7 +98,7 @@ const OrderTracking = () => {
         {
           medicineId: item.medicineId,
           medicineName: item.medicineName,
-          category: item.category || 'General',
+          category: item.category || "General",
           pharmacyId: item.pharmacyId,
           pharmacyName: item.pharmacyName,
           price: item.price,
@@ -86,13 +107,13 @@ const OrderTracking = () => {
           requiresPrescription: item.requiresPrescription,
           stockStatus: "In Stock",
         },
-        item.quantity
+        item.quantity,
       );
       itemCount += item.quantity;
     });
 
     toast({
-      title: "Items Added to Cart",
+      title: "Items added to cart",
       description: `${itemCount} items from order ${order.orderId} added to cart`,
     });
 
@@ -104,20 +125,20 @@ const OrderTracking = () => {
       {
         medicineId: item.medicineId,
         medicineName: item.medicineName,
-        category: item.category || 'General',
+        category: item.category || "General",
         pharmacyId: item.pharmacyId,
         pharmacyName: item.pharmacyName,
         price: item.price,
         quantity: item.quantity,
-          type: item.type,
-          requiresPrescription: item.requiresPrescription,
-          stockStatus: "In Stock",
-        },
-        item.quantity
+        type: item.type,
+        requiresPrescription: item.requiresPrescription,
+        stockStatus: "In Stock",
+      },
+      item.quantity,
     );
 
     toast({
-      title: "Added to Cart",
+      title: "Added to cart",
       description: `${item.medicineName} has been added to your cart`,
     });
   };
@@ -127,19 +148,19 @@ const OrderTracking = () => {
       await addFavorite({
         medicineId: item.medicineId,
         medicineName: item.medicineName,
-        category: item.category || 'General',
+        category: item.category || "General",
         lastPharmacyId: item.pharmacyId,
         lastPharmacyName: item.pharmacyName,
         lastPrice: item.price,
       });
 
       toast({
-        title: "Added to Favorites",
+        title: "Added to favorites",
         description: `${item.medicineName} has been added to your favorites`,
       });
-    } catch (error) {
+    } catch {
       toast({
-        title: "Favorite Update Failed",
+        title: "Favorite update failed",
         description: "Please try again.",
         variant: "destructive",
       });
@@ -170,197 +191,216 @@ const OrderTracking = () => {
       <div className="container mx-auto px-4 py-6 max-w-4xl">
         <div className="mb-6">
           <h1 className="text-3xl font-bold mb-2">Order Tracking</h1>
-          <div className="flex items-center gap-3">
-            <span className="text-muted-foreground">{order.orderId}</span>
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-muted-foreground">{order.orderNumber || order.orderId}</span>
             <OrderStatusBadge status={order.status} />
+            <span className="text-sm text-muted-foreground">{formatDateTime(order.createdAt)}</span>
           </div>
         </div>
 
         <MockOrderControls orderId={order.orderId} />
 
         <Card className="border-primary/20 bg-primary/5 mb-6">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="font-semibold">Reorder this order</h3>
-                <p className="text-sm text-muted-foreground">
-                  Add all items to cart with same quantities
-                </p>
-              </div>
-              <Button onClick={handleReorderAll}>
-                <ShoppingCart className="mr-2 h-4 w-4" />
-                Order Again
-              </Button>
+          <CardContent className="p-4 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h3 className="font-semibold">Reorder this order</h3>
+              <p className="text-sm text-muted-foreground">
+                Add all items back to your cart with the same quantities.
+              </p>
             </div>
+            <Button onClick={handleReorderAll}>
+              <ShoppingCart className="mr-2 h-4 w-4" />
+              Order Again
+            </Button>
           </CardContent>
         </Card>
 
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle>Order Status</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {timeline.map((status, index) => {
-                const isCompleted = index <= currentStatusIndex;
-                const isCurrent = index === currentStatusIndex;
-                const statusHistory = order.statusHistory.find((entry) => entry.status === status);
-
-                return (
-                  <div key={status} className="flex gap-4">
-                    <div className="flex flex-col items-center">
-                      <div
-                        className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                          isCompleted ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
-                        }`}
-                      >
-                        {isCompleted ? <CheckCircle className="h-4 w-4" /> : <Clock className="h-4 w-4" />}
-                      </div>
-                      {index < timeline.length - 1 && (
-                        <div
-                          className={`w-0.5 h-12 ${
-                            isCompleted && !isCurrent ? 'bg-primary' : 'bg-muted'
-                          }`}
-                        />
-                      )}
-                    </div>
-                    <div className="flex-1 pb-8">
-                      <div className={`font-medium ${isCurrent ? 'text-primary' : ''}`}>
-                        <OrderStatusBadge status={status} />
-                      </div>
-                      {statusHistory && (
-                        <p className="text-sm text-muted-foreground mt-1">
-                          {format(new Date(statusHistory.timestamp), 'MMM dd, yyyy h:mm a')}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
-
-        {Object.entries(order.itemsByPharmacy).map(([pharmacyId, items]) => {
-          const pharmacy = pharmacyDetails[pharmacyId] ?? {
-            id: Number(pharmacyId),
-            name: items[0]?.pharmacyName || `Pharmacy ${pharmacyId}`,
-            address: "Address unavailable",
-            phone: "Phone unavailable",
-          };
-          const isDelivery = items.some((item) => item.type === 'delivery');
-
-          return (
-            <Card key={pharmacyId} className="mb-6">
+        <div className="grid gap-6 lg:grid-cols-[1.4fr_0.8fr]">
+          <div className="space-y-6">
+            <Card>
               <CardHeader>
-                <div className="flex items-start justify-between">
-                  <div>
-                    <CardTitle>{pharmacy.name}</CardTitle>
-                    <p className="text-sm text-muted-foreground mt-1 flex items-center gap-1">
-                      <MapPin className="h-3 w-3" />
-                      {pharmacy.address}
-                    </p>
-                    <p className="text-sm text-muted-foreground flex items-center gap-1">
-                      <Phone className="h-3 w-3" />
-                      {pharmacy.phone}
-                    </p>
-                  </div>
-                </div>
+                <CardTitle>Order Status</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  {items.map((item) => (
-                    <div key={item.id} className="flex items-center justify-between py-2 gap-2">
-                      <div className="flex items-center gap-3 flex-1 min-w-0">
-                        <div className="w-10 h-10 bg-muted rounded-lg flex items-center justify-center flex-shrink-0">
-                          <Pill className="h-5 w-5 text-muted-foreground" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium truncate">{item.medicineName}</p>
-                          <p className="text-sm text-muted-foreground">
-                            Qty: {item.quantity} • ${(item.price * item.quantity).toFixed(2)}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1 flex-shrink-0">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleReorderItem(item)}
-                        >
-                          <Plus className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => void handleAddToFavorites(item)}
-                        >
-                          <Heart
-                            className={`h-4 w-4 ${
-                              isFavorite(item.medicineId) ? "fill-primary text-primary" : ""
+              <CardContent>
+                <div className="space-y-4">
+                  {timeline.map((status, index) => {
+                    const isCompleted = index <= currentStatusIndex;
+                    const isCurrent = index === currentStatusIndex;
+                    const statusHistory = order.statusHistory.find((entry) => entry.status === status);
+
+                    return (
+                      <div key={status} className="flex gap-4">
+                        <div className="flex flex-col items-center">
+                          <div
+                            className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                              isCompleted
+                                ? "bg-primary text-primary-foreground"
+                                : "bg-muted text-muted-foreground"
                             }`}
-                          />
-                        </Button>
+                          >
+                            {isCompleted ? (
+                              <CheckCircle className="h-4 w-4" />
+                            ) : (
+                              <Clock className="h-4 w-4" />
+                            )}
+                          </div>
+                          {index < timeline.length - 1 && (
+                            <div
+                              className={`w-0.5 h-12 ${
+                                isCompleted && !isCurrent ? "bg-primary" : "bg-muted"
+                              }`}
+                            />
+                          )}
+                        </div>
+                        <div className="flex-1 pb-8">
+                          <div className="font-medium">
+                            <OrderStatusBadge status={status} />
+                          </div>
+                          {statusHistory ? (
+                            <div className="mt-2 space-y-1">
+                              <p className="text-sm text-muted-foreground">
+                                {formatDateTime(statusHistory.timestamp)}
+                              </p>
+                              {statusHistory.note ? (
+                                <p className="text-sm text-muted-foreground">{statusHistory.note}</p>
+                              ) : null}
+                            </div>
+                          ) : (
+                            <p className="text-sm text-muted-foreground mt-2">Waiting for this step.</p>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
-
-                <Separator />
-
-                {isDelivery && order.deliveryForm ? (
-                  <div>
-                    <h4 className="font-semibold mb-2">Delivery Address</h4>
-                    <p className="text-sm">{order.deliveryForm.fullName}</p>
-                    <p className="text-sm text-muted-foreground">{order.deliveryForm.address}</p>
-                    {order.deliveryForm.building && (
-                      <p className="text-sm text-muted-foreground">{order.deliveryForm.building}</p>
-                    )}
-                    {order.deliveryForm.floor && (
-                      <p className="text-sm text-muted-foreground">Floor: {order.deliveryForm.floor}</p>
-                    )}
-                    <p className="text-sm text-muted-foreground">{order.deliveryForm.phone}</p>
-                  </div>
-                ) : order.reservationForm ? (
-                  <div>
-                    <h4 className="font-semibold mb-2">Pickup Information</h4>
-                    <p className="text-sm">{order.reservationForm.fullName}</p>
-                    <p className="text-sm text-muted-foreground">{order.reservationForm.phone}</p>
-                    {order.pickupTimes[Number(pharmacyId)] && (
-                      <p className="text-sm text-muted-foreground">
-                        {timeSlotLabels[order.pickupTimes[Number(pharmacyId)]]}
-                      </p>
-                    )}
-                  </div>
-                ) : null}
               </CardContent>
             </Card>
-          );
-        })}
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Order Summary</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Subtotal</span>
-              <span>${order.subtotal.toFixed(2)}</span>
-            </div>
-            {order.deliveryFees > 0 && (
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Delivery Fee</span>
-                <span>${order.deliveryFees.toFixed(2)}</span>
-              </div>
-            )}
-            <Separator />
-            <div className="flex justify-between font-semibold text-lg">
-              <span>Total</span>
-              <span>${order.total.toFixed(2)}</span>
-            </div>
-            <p className="text-sm text-muted-foreground">Payment: {order.paymentMethod.replace('_', ' ')}</p>
-          </CardContent>
-        </Card>
+            {Object.entries(order.itemsByPharmacy).map(([pharmacyId, items]) => {
+              const pharmacy = pharmacyDetails[Number(pharmacyId)] ?? {
+                id: Number(pharmacyId),
+                name: items[0]?.pharmacyName || `Pharmacy ${pharmacyId}`,
+                address: isLoadingPharmacies ? "Loading pharmacy address..." : "Address unavailable",
+                phone: isLoadingPharmacies ? "Loading pharmacy phone..." : "Phone unavailable",
+              };
+              const isDelivery = items.some((item) => item.type === "delivery");
+
+              return (
+                <Card key={pharmacyId} className="mb-6">
+                  <CardHeader>
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <CardTitle>{pharmacy.name}</CardTitle>
+                        <p className="text-sm text-muted-foreground mt-1 flex items-center gap-1">
+                          <MapPin className="h-3 w-3" />
+                          {pharmacy.address}
+                        </p>
+                        <p className="text-sm text-muted-foreground flex items-center gap-1">
+                          <Phone className="h-3 w-3" />
+                          {pharmacy.phone}
+                        </p>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                      {items.map((item) => (
+                        <div key={item.id} className="flex items-center justify-between py-2 gap-3">
+                          <div className="flex items-center gap-3 flex-1 min-w-0">
+                            <div className="w-10 h-10 bg-muted rounded-lg flex items-center justify-center flex-shrink-0">
+                              <Pill className="h-5 w-5 text-muted-foreground" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium truncate">{item.medicineName}</p>
+                              <p className="text-sm text-muted-foreground">
+                                Qty: {item.quantity} | {formatCurrency(item.price * item.quantity)}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            <Button size="sm" variant="outline" onClick={() => handleReorderItem(item)}>
+                              <Plus className="h-4 w-4" />
+                            </Button>
+                            <Button size="sm" variant="ghost" onClick={() => void handleAddToFavorites(item)}>
+                              <Heart
+                                className={`h-4 w-4 ${
+                                  isFavorite(item.medicineId) ? "fill-primary text-primary" : ""
+                                }`}
+                              />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <Separator />
+
+                    {isDelivery && order.deliveryForm ? (
+                      <div>
+                        <h4 className="font-semibold mb-2">Delivery Address</h4>
+                        <p className="text-sm">{order.deliveryForm.fullName}</p>
+                        <p className="text-sm text-muted-foreground">{order.deliveryForm.address}</p>
+                        {order.deliveryForm.building ? (
+                          <p className="text-sm text-muted-foreground">{order.deliveryForm.building}</p>
+                        ) : null}
+                        {order.deliveryForm.floor ? (
+                          <p className="text-sm text-muted-foreground">Floor: {order.deliveryForm.floor}</p>
+                        ) : null}
+                        <p className="text-sm text-muted-foreground">{order.deliveryForm.phone}</p>
+                      </div>
+                    ) : order.reservationForm ? (
+                      <div>
+                        <h4 className="font-semibold mb-2">Pickup Information</h4>
+                        <p className="text-sm">{order.reservationForm.fullName}</p>
+                        <p className="text-sm text-muted-foreground">{order.reservationForm.phone}</p>
+                        {order.pickupTimes[Number(pharmacyId)] ? (
+                          <p className="text-sm text-muted-foreground">
+                            {timeSlotLabels[order.pickupTimes[Number(pharmacyId)]]}
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Receipt className="h-5 w-5" />
+                  Summary
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Items</span>
+                  <span>{formatItemCount(order.items.reduce((sum, item) => sum + item.quantity, 0))}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Subtotal</span>
+                  <span>{formatCurrency(order.subtotal)}</span>
+                </div>
+                {order.deliveryFees > 0 ? (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Delivery Fee</span>
+                    <span>{formatCurrency(order.deliveryFees)}</span>
+                  </div>
+                ) : null}
+                <Separator />
+                <div className="flex justify-between font-semibold text-lg">
+                  <span>Total</span>
+                  <span>{formatCurrency(order.total)}</span>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Payment: {formatPaymentMethod(order.paymentMethod)}
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
       </div>
     </div>
   );

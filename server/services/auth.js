@@ -1,23 +1,28 @@
 // Auth microservice (standalone)
 import express from 'express';
-import cors from 'cors';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import nodemailer from 'nodemailer';
 import { authenticateToken, signAccessToken } from '../lib/auth.js';
 import { loadDatabase } from '../lib/database.js';
-import { getEnv, loadServiceEnvironment } from '../lib/env.js';
+import { getEnv, getNumberEnv, loadServiceEnvironment, validateServiceEnvironment } from '../lib/env.js';
+import { applyCommonMiddleware, sendHealthResponse } from '../lib/http.js';
+import { createRateLimiter } from '../lib/rate-limit.js';
 
 loadServiceEnvironment();
+validateServiceEnvironment('auth-service', {
+  defaultPort: 4000,
+  requireFrontendUrl: true,
+  validateEmailSettings: true,
+});
 
 const AuthDatabase = await loadDatabase('auth-service');
 
 const authApp = express();
-const AUTH_PORT = Number(getEnv('PORT', '4000'));
-const AUTH_FRONTEND_URL = getEnv('FRONTEND_URL', 'http://localhost:5173');
+const AUTH_PORT = getNumberEnv('PORT', '4000');
+const AUTH_FRONTEND_URL = getEnv('FRONTEND_URL', 'http://localhost:8082');
 
-authApp.use(cors());
-authApp.use(express.json());
+applyCommonMiddleware(authApp);
 
 const normalizeEmail = (value) => value?.trim().toLowerCase();
 const normalizePhone = (value) => value?.trim();
@@ -79,7 +84,35 @@ const sendAuthEmail = async (to, subject, html) => {
 const getApiErrorMessage = (error, fallback = 'Internal server error') =>
   error instanceof Error ? error.message : fallback;
 
-authApp.post('/api/auth/register', async (req, res) => {
+const registerLimiter = createRateLimiter({
+  key: 'auth-register',
+  windowMs: 15 * 60 * 1000,
+  max: getNumberEnv('AUTH_REGISTER_RATE_LIMIT_MAX', '20'),
+  message: 'Too many registration attempts. Please try again later.',
+});
+
+const loginLimiter = createRateLimiter({
+  key: 'auth-login',
+  windowMs: 15 * 60 * 1000,
+  max: getNumberEnv('AUTH_LOGIN_RATE_LIMIT_MAX', '25'),
+  message: 'Too many login attempts. Please try again later.',
+});
+
+const passwordResetLimiter = createRateLimiter({
+  key: 'auth-password-reset',
+  windowMs: 15 * 60 * 1000,
+  max: getNumberEnv('AUTH_PASSWORD_RESET_RATE_LIMIT_MAX', '10'),
+  message: 'Too many password reset attempts. Please try again later.',
+});
+
+const verificationLimiter = createRateLimiter({
+  key: 'auth-verification',
+  windowMs: 15 * 60 * 1000,
+  max: getNumberEnv('AUTH_VERIFICATION_RATE_LIMIT_MAX', '10'),
+  message: 'Too many verification requests. Please try again later.',
+});
+
+authApp.post('/api/auth/register', registerLimiter, async (req, res) => {
   try {
     const email = normalizeEmail(req.body.email);
     const password = req.body.password;
@@ -178,7 +211,7 @@ authApp.post('/api/auth/register', async (req, res) => {
   }
 });
 
-authApp.post('/api/auth/login', async (req, res) => {
+authApp.post('/api/auth/login', loginLimiter, async (req, res) => {
   try {
     const email = normalizeEmail(req.body.email);
     const phone = normalizePhone(req.body.phone);
@@ -416,7 +449,7 @@ authApp.get('/api/auth/verify-email', async (req, res) => {
   }
 });
 
-authApp.post('/api/auth/resend-verification', authenticateToken, async (req, res) => {
+authApp.post('/api/auth/resend-verification', authenticateToken, verificationLimiter, async (req, res) => {
   try {
     const user = await AuthDatabase.findUserById(req.user.userId);
     if (!user) {
@@ -481,7 +514,7 @@ authApp.post('/api/auth/resend-verification', authenticateToken, async (req, res
   }
 });
 
-authApp.post('/api/auth/forgot-password', async (req, res) => {
+authApp.post('/api/auth/forgot-password', passwordResetLimiter, async (req, res) => {
   try {
     const email = normalizeEmail(req.body.email);
     if (!email) {
@@ -518,7 +551,7 @@ authApp.post('/api/auth/forgot-password', async (req, res) => {
   }
 });
 
-authApp.post('/api/auth/reset-password', async (req, res) => {
+authApp.post('/api/auth/reset-password', passwordResetLimiter, async (req, res) => {
   try {
     const token = req.body.token;
     const password = req.body.password;
@@ -563,7 +596,7 @@ authApp.post('/api/auth/reset-password', async (req, res) => {
 });
 
 authApp.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', service: 'auth', timestamp: new Date().toISOString() });
+  sendHealthResponse(res, 'auth');
 });
 
 authApp.listen(AUTH_PORT, () => {

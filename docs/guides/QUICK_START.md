@@ -21,7 +21,7 @@ npm --prefix server install
 Frontend `.env`:
 
 ```env
-VITE_API_BASE_URL=http://localhost:5173
+VITE_API_BASE_URL=http://localhost:4000/api
 VITE_ENABLE_MOCK_DATA=false
 ```
 
@@ -29,7 +29,8 @@ Backend `server/.env`:
 
 ```env
 JWT_SECRET=replace-with-a-long-random-secret
-FRONTEND_URL=http://localhost:5173
+FRONTEND_URL=http://localhost:8082
+ALLOWED_ORIGINS=http://localhost:8082,http://127.0.0.1:4173
 EMAIL_MODE=console
 ```
 

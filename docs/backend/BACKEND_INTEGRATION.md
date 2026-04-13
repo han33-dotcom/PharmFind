@@ -552,8 +552,8 @@ static async searchMedicines(query: string): Promise<PharmacyMedicine[]> {
 Update `.env`:
 
 ```bash
-# Point to your backend API
-VITE_API_BASE_URL=https://api.pharmfind.com
+# Point to your backend API or set the individual VITE_*_API_URL values
+VITE_API_BASE_URL=https://auth.pharmfind.com/api
 
 # Disable mock data
 VITE_ENABLE_MOCK_DATA=false
@@ -652,7 +652,7 @@ When implementing authentication:
 ```javascript
 // Example for Express.js
 app.use(cors({
-  origin: 'http://localhost:5173', // Vite dev server
+  origin: 'http://localhost:8082', // Vite dev server
   credentials: true
 }));
 ```

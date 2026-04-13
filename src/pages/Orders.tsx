@@ -6,11 +6,11 @@ import Logo from "@/components/Logo";
 import { CartIcon } from "@/components/CartIcon";
 import { useOrders } from "@/contexts/OrdersContext";
 import { OrderStatusBadge } from "@/components/OrderStatusBadge";
-import { format } from "date-fns";
+import { formatCurrency, formatDateTime, formatItemCount } from "@/lib/formatters";
 
 const Orders = () => {
   const navigate = useNavigate();
-  const { orders, isLoading, markOrderAsRead } = useOrders();
+  const { orders, isLoading, errorMessage, markOrderAsRead, refreshOrders } = useOrders();
 
   const handleOrderClick = (orderId: string) => {
     markOrderAsRead(orderId);
@@ -19,7 +19,6 @@ const Orders = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
       <header className="border-b bg-card sticky top-0 z-10">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
@@ -49,12 +48,21 @@ const Orders = () => {
               <p className="text-muted-foreground">Loading your orders...</p>
             </CardContent>
           </Card>
+        ) : errorMessage ? (
+          <Card>
+            <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+              <Package className="h-16 w-16 text-muted-foreground mb-4" />
+              <h2 className="text-xl font-semibold mb-2">Orders are temporarily unavailable</h2>
+              <p className="text-muted-foreground mb-4">{errorMessage}</p>
+              <Button onClick={() => void refreshOrders()}>Try Again</Button>
+            </CardContent>
+          </Card>
         ) : orders.length === 0 ? (
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-12">
               <Package className="h-16 w-16 text-muted-foreground mb-4" />
               <h2 className="text-xl font-semibold mb-2">No orders yet</h2>
-              <p className="text-muted-foreground mb-4">Start shopping to place your first order!</p>
+              <p className="text-muted-foreground mb-4">Start shopping to place your first order.</p>
               <Button onClick={() => navigate("/dashboard")}>Browse Pharmacies</Button>
             </CardContent>
           </Card>
@@ -62,7 +70,7 @@ const Orders = () => {
           <div className="space-y-4">
             {orders.map((order) => {
               const itemCount = order.items.reduce((sum, item) => sum + item.quantity, 0);
-              
+
               return (
                 <Card
                   key={order.orderId}
@@ -70,21 +78,22 @@ const Orders = () => {
                   onClick={() => handleOrderClick(order.orderId)}
                 >
                   <CardContent className="p-6">
-                    <div className="flex items-start justify-between mb-4">
-                      <div>
-                        <h3 className="font-semibold text-lg mb-1">{order.orderId}</h3>
+                    <div className="flex items-start justify-between mb-4 gap-4">
+                      <div className="min-w-0">
+                        <h3 className="font-semibold text-lg mb-1 truncate">
+                          {order.orderNumber || order.orderId}
+                        </h3>
                         <p className="text-sm text-muted-foreground">
-                          {format(new Date(order.createdAt), 'MMM dd, yyyy • h:mm a')}
+                          {formatDateTime(order.createdAt)}
                         </p>
                       </div>
                       <OrderStatusBadge status={order.status} />
                     </div>
 
-                    <div className="flex items-center justify-between">
-                      <div className="text-sm">
-                        <span className="text-muted-foreground">{itemCount} item{itemCount !== 1 ? 's' : ''}</span>
-                        <span className="mx-2">•</span>
-                        <span className="font-semibold">${order.total.toFixed(2)}</span>
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="text-sm min-w-0">
+                        <p className="text-muted-foreground">{formatItemCount(itemCount)}</p>
+                        <p className="font-semibold">{formatCurrency(order.total)}</p>
                       </div>
                       <Button variant="outline" size="sm">
                         View Details

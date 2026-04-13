@@ -27,11 +27,18 @@ services:
       DATABASE_URL: postgres://pharm:pharm@postgres:5432/pharmdb
       JWT_SECRET: "${JWT_SECRET:?Set JWT_SECRET in your environment or .env file}"
       FRONTEND_URL: http://localhost:5173
+      ALLOWED_ORIGINS: http://localhost:5173
       EMAIL_MODE: console
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     ports:
       - "4000:4000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/api/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
 
   medicines:
     build:
@@ -45,10 +52,17 @@ services:
       PORT: 4001
       DATABASE_URL: postgres://pharm:pharm@postgres:5432/pharmdb
       JWT_SECRET: "${JWT_SECRET:?Set JWT_SECRET in your environment or .env file}"
+      ALLOWED_ORIGINS: http://localhost:5173
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     ports:
       - "4001:4001"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4001/api/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
 
   pharmacies:
     build:
@@ -62,10 +76,17 @@ services:
       PORT: 4002
       DATABASE_URL: postgres://pharm:pharm@postgres:5432/pharmdb
       JWT_SECRET: "${JWT_SECRET:?Set JWT_SECRET in your environment or .env file}"
+      ALLOWED_ORIGINS: http://localhost:5173
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     ports:
       - "4002:4002"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4002/api/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
 
   orders:
     build:
@@ -79,10 +100,17 @@ services:
       PORT: 4003
       DATABASE_URL: postgres://pharm:pharm@postgres:5432/pharmdb
       JWT_SECRET: "${JWT_SECRET:?Set JWT_SECRET in your environment or .env file}"
+      ALLOWED_ORIGINS: http://localhost:5173
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     ports:
       - "4003:4003"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4003/api/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
 
   addresses:
     build:
@@ -96,10 +124,17 @@ services:
       PORT: 4004
       DATABASE_URL: postgres://pharm:pharm@postgres:5432/pharmdb
       JWT_SECRET: "${JWT_SECRET:?Set JWT_SECRET in your environment or .env file}"
+      ALLOWED_ORIGINS: http://localhost:5173
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     ports:
       - "4004:4004"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4004/api/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
 
   favorites:
     build:
@@ -113,10 +148,17 @@ services:
       PORT: 4005
       DATABASE_URL: postgres://pharm:pharm@postgres:5432/pharmdb
       JWT_SECRET: "${JWT_SECRET:?Set JWT_SECRET in your environment or .env file}"
+      ALLOWED_ORIGINS: http://localhost:5173
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     ports:
       - "4005:4005"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4005/api/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
 
   prescriptions:
     build:
@@ -130,10 +172,17 @@ services:
       PORT: 4006
       DATABASE_URL: postgres://pharm:pharm@postgres:5432/pharmdb
       JWT_SECRET: "${JWT_SECRET:?Set JWT_SECRET in your environment or .env file}"
+      ALLOWED_ORIGINS: http://localhost:5173
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     ports:
       - "4006:4006"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4006/api/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
 
   frontend:
     build:
@@ -141,18 +190,37 @@ services:
       dockerfile: Dockerfile.frontend
       args:
         NODE_VERSION: 20-alpine
-        VITE_API_BASE_URL: http://localhost:5173
+        VITE_API_BASE_URL: http://localhost:4000/api
+        VITE_AUTH_API_URL: http://localhost:4000/api
+        VITE_MEDICINES_API_URL: http://localhost:4001/api
+        VITE_PHARMACIES_API_URL: http://localhost:4002/api
+        VITE_ORDERS_API_URL: http://localhost:4003/api
+        VITE_ADDRESSES_API_URL: http://localhost:4004/api
+        VITE_FAVORITES_API_URL: http://localhost:4005/api
+        VITE_PRESCRIPTIONS_API_URL: http://localhost:4006/api
     container_name: pharmfind-frontend
     depends_on:
-      - auth
-      - medicines
-      - pharmacies
-      - orders
-      - addresses
-      - favorites
-      - prescriptions
+      auth:
+        condition: service_healthy
+      medicines:
+        condition: service_healthy
+      pharmacies:
+        condition: service_healthy
+      orders:
+        condition: service_healthy
+      addresses:
+        condition: service_healthy
+      favorites:
+        condition: service_healthy
+      prescriptions:
+        condition: service_healthy
     ports:
       - "5173:80"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/healthz > /dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
 
 volumes:
   pgdata:

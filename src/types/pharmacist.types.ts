@@ -33,6 +33,7 @@ export interface InventoryItem {
   price: number;
   expiryDate: string;
   lastUpdated: string;
+  stockStatus: 'In Stock' | 'Low Stock' | 'Out of Stock';
 }
 
 export interface PharmacyProfile {

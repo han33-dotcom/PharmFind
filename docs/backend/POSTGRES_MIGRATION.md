@@ -55,7 +55,8 @@ Create or update `server/.env`:
 DATABASE_URL=postgresql://username:password@localhost:5432/pharmfind
 DATABASE_SSL=false
 JWT_SECRET=replace-with-a-long-random-secret
-FRONTEND_URL=http://localhost:5173
+FRONTEND_URL=http://localhost:8082
+ALLOWED_ORIGINS=http://localhost:8082,http://127.0.0.1:4173
 ```
 
 For hosted providers you may need:

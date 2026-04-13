@@ -6,6 +6,16 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
   Table,
   TableBody,
   TableCell,
@@ -20,23 +30,33 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Search, AlertCircle, Package, Loader2 } from 'lucide-react';
+import { Search, AlertCircle, Package, Loader2, Pencil, Save, Trash2, X } from 'lucide-react';
 import { InventoryItem } from '@/types/pharmacist.types';
 import { PharmacistOrdersService } from '@/services/pharmacist-orders.service';
 import { MedicinesService } from '@/services/medicines.service';
 import { Medicine } from '@/types';
 import { toast } from 'sonner';
 
+const sortInventory = (items: InventoryItem[]) =>
+  [...items].sort((left, right) => left.medicineName.localeCompare(right.medicineName));
+
 const InventoryManagement = () => {
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [catalog, setCatalog] = useState<Medicine[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
   const [isLoading, setIsLoading] = useState(true);
   const [selectedMedicineId, setSelectedMedicineId] = useState<string>('');
   const [newPrice, setNewPrice] = useState('');
   const [newQuantity, setNewQuantity] = useState('');
   const [isAdding, setIsAdding] = useState(false);
+  const [editingMedicineId, setEditingMedicineId] = useState<string | null>(null);
+  const [editPrice, setEditPrice] = useState('');
+  const [editQuantity, setEditQuantity] = useState('');
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [itemPendingDelete, setItemPendingDelete] = useState<InventoryItem | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     const loadInventory = async () => {
@@ -45,7 +65,7 @@ const InventoryManagement = () => {
           PharmacistOrdersService.getInventory(),
           MedicinesService.getCatalog(),
         ]);
-        setInventory(inventoryData);
+        setInventory(sortInventory(inventoryData));
         setCatalog(catalogData);
       } catch (error) {
         console.error('Failed to load inventory:', error);
@@ -65,15 +85,21 @@ const InventoryManagement = () => {
 
   const filteredInventory = useMemo(() => {
     return inventory.filter(item => {
-      const matchesSearch = 
+      const matchesSearch =
         item.medicineName.toLowerCase().includes(searchQuery.toLowerCase()) ||
         item.scientificName.toLowerCase().includes(searchQuery.toLowerCase());
-      
+
       const matchesCategory = categoryFilter === 'all' || item.category === categoryFilter;
-      
-      return matchesSearch && matchesCategory;
+      const stockStatus = item.stockStatus;
+      const matchesStatus =
+        statusFilter === 'all' ||
+        (statusFilter === 'in-stock' && stockStatus === 'In Stock') ||
+        (statusFilter === 'low-stock' && stockStatus === 'Low Stock') ||
+        (statusFilter === 'out-of-stock' && stockStatus === 'Out of Stock');
+
+      return matchesSearch && matchesCategory && matchesStatus;
     });
-  }, [inventory, searchQuery, categoryFilter]);
+  }, [inventory, searchQuery, categoryFilter, statusFilter]);
 
   const availableMedicinesToAdd = useMemo(() => {
     const stockedMedicineIds = new Set(
@@ -90,7 +116,7 @@ const InventoryManagement = () => {
     try {
       const updated = await PharmacistOrdersService.updateInventoryAvailability(item, item.stockLevel === 0);
       setInventory((previous) =>
-        previous.map((entry) => (entry.id === itemId ? updated : entry))
+        sortInventory(previous.map((entry) => (entry.id === itemId ? updated : entry)))
       );
       toast.success(
         updated.stockLevel > 0
@@ -120,7 +146,7 @@ const InventoryManagement = () => {
         price,
         quantity,
       });
-      setInventory((previous) => [...previous, createdItem]);
+      setInventory((previous) => sortInventory([...previous, createdItem]));
       setSelectedMedicineId('');
       setNewPrice('');
       setNewQuantity('');
@@ -133,9 +159,71 @@ const InventoryManagement = () => {
     }
   };
 
+  const startEditing = (item: InventoryItem) => {
+    setEditingMedicineId(item.id);
+    setEditPrice(String(item.price));
+    setEditQuantity(String(item.stockLevel));
+  };
+
+  const cancelEditing = () => {
+    setEditingMedicineId(null);
+    setEditPrice('');
+    setEditQuantity('');
+  };
+
+  const handleSaveInventoryItem = async (item: InventoryItem) => {
+    const price = Number(editPrice);
+    const quantity = Number(editQuantity);
+
+    if (!Number.isFinite(price) || price < 0 || !Number.isFinite(quantity) || quantity < 0) {
+      toast.error('Enter a valid non-negative price and quantity');
+      return;
+    }
+
+    setIsSavingEdit(true);
+    try {
+      const updatedItem = await PharmacistOrdersService.updateInventoryItem(item.medicineId ?? item.id, {
+        price,
+        quantity,
+      });
+      setInventory((previous) =>
+        sortInventory(previous.map((entry) => (entry.id === item.id ? updatedItem : entry)))
+      );
+      cancelEditing();
+      toast.success(`${updatedItem.medicineName} updated`);
+    } catch (error) {
+      console.error('Failed to update inventory item:', error);
+      toast.error('Failed to update inventory item');
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  const handleDeleteInventoryItem = async () => {
+    if (!itemPendingDelete) return;
+
+    setIsDeleting(true);
+    try {
+      await PharmacistOrdersService.deleteInventoryItem(itemPendingDelete.medicineId ?? itemPendingDelete.id);
+      setInventory((previous) =>
+        previous.filter((entry) => entry.id !== itemPendingDelete.id)
+      );
+      if (editingMedicineId === itemPendingDelete.id) {
+        cancelEditing();
+      }
+      toast.success(`${itemPendingDelete.medicineName} removed from inventory`);
+      setItemPendingDelete(null);
+    } catch (error) {
+      console.error('Failed to remove inventory item:', error);
+      toast.error('Failed to remove inventory item');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   const getStockStatus = (item: InventoryItem) => {
-    if (item.stockLevel === 0) return { label: 'Out of Stock', variant: 'destructive' as const };
-    if (item.stockLevel < item.minStockLevel) return { label: 'Low Stock', variant: 'outline' as const };
+    if (item.stockStatus === 'Out of Stock') return { label: 'Out of Stock', variant: 'destructive' as const };
+    if (item.stockStatus === 'Low Stock') return { label: 'Low Stock', variant: 'outline' as const };
     return { label: 'In Stock', variant: 'default' as const };
   };
 
@@ -268,6 +356,17 @@ const InventoryManagement = () => {
                   ))}
                 </SelectContent>
               </Select>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-full sm:w-48">
+                  <SelectValue placeholder="Filter by stock status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Stock Statuses</SelectItem>
+                  <SelectItem value="in-stock">In Stock</SelectItem>
+                  <SelectItem value="low-stock">Low Stock</SelectItem>
+                  <SelectItem value="out-of-stock">Out of Stock</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </CardHeader>
           <CardContent>
@@ -280,13 +379,15 @@ const InventoryManagement = () => {
                   <TableHead>Price (LBP)</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Available</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredInventory.map((item) => {
                   const stockStatus = getStockStatus(item);
+                  const isEditing = editingMedicineId === item.id;
                   return (
-                    <TableRow key={item.id}>
+                    <TableRow key={item.id} data-testid={`inventory-item-${item.id}`}>
                       <TableCell>
                         <div>
                           <p className="font-medium">{item.medicineName}</p>
@@ -297,16 +398,43 @@ const InventoryManagement = () => {
                       </TableCell>
                       <TableCell>{item.category}</TableCell>
                       <TableCell>
-                        <div className="space-y-1">
-                          <p className="font-medium">{item.stockLevel} units</p>
-                          {item.stockLevel < item.minStockLevel && item.stockLevel > 0 && (
-                            <p className="text-xs text-orange-500">
-                              Min: {item.minStockLevel}
-                            </p>
-                          )}
-                        </div>
+                        {isEditing ? (
+                          <div className="space-y-2">
+                            <Input
+                              type="number"
+                              min="0"
+                              step="1"
+                              value={editQuantity}
+                              onChange={(event) => setEditQuantity(event.target.value)}
+                              data-testid={`inventory-quantity-input-${item.id}`}
+                            />
+                            <p className="text-xs text-muted-foreground">Minimum: {item.minStockLevel}</p>
+                          </div>
+                        ) : (
+                          <div className="space-y-1">
+                            <p className="font-medium">{item.stockLevel} units</p>
+                            {item.stockLevel < item.minStockLevel && item.stockLevel > 0 && (
+                              <p className="text-xs text-orange-500">
+                                Min: {item.minStockLevel}
+                              </p>
+                            )}
+                          </div>
+                        )}
                       </TableCell>
-                      <TableCell>{item.price.toLocaleString()}</TableCell>
+                      <TableCell>
+                        {isEditing ? (
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={editPrice}
+                            onChange={(event) => setEditPrice(event.target.value)}
+                            data-testid={`inventory-price-input-${item.id}`}
+                          />
+                        ) : (
+                          item.price.toLocaleString()
+                        )}
+                      </TableCell>
                       <TableCell>
                         <Badge variant={stockStatus.variant}>
                           {stockStatus.label}
@@ -316,14 +444,66 @@ const InventoryManagement = () => {
                         <Switch
                           checked={item.stockLevel > 0}
                           onCheckedChange={() => toggleStock(item.id)}
+                          disabled={isEditing || isSavingEdit || isDeleting}
                         />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          {isEditing ? (
+                            <>
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={() => void handleSaveInventoryItem(item)}
+                                disabled={isSavingEdit}
+                                data-testid={`save-inventory-item-${item.id}`}
+                              >
+                                <Save className="h-4 w-4" />
+                                <span className="sr-only">Save inventory item</span>
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={cancelEditing}
+                                disabled={isSavingEdit}
+                              >
+                                <X className="h-4 w-4" />
+                                <span className="sr-only">Cancel inventory edit</span>
+                              </Button>
+                            </>
+                          ) : (
+                            <>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() => startEditing(item)}
+                                data-testid={`edit-inventory-item-${item.id}`}
+                              >
+                                <Pencil className="h-4 w-4" />
+                                <span className="sr-only">Edit inventory item</span>
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setItemPendingDelete(item)}
+                                data-testid={`delete-inventory-item-${item.id}`}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                                <span className="sr-only">Delete inventory item</span>
+                              </Button>
+                            </>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   );
                 })}
                 {filteredInventory.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                       {inventory.length === 0
                         ? 'Your pharmacy has no inventory yet. Add your first medicine above.'
                         : 'No medicines found'}
@@ -335,6 +515,30 @@ const InventoryManagement = () => {
           </CardContent>
         </Card>
       </div>
+      <AlertDialog open={itemPendingDelete !== null} onOpenChange={(isOpen) => !isOpen && setItemPendingDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove medicine from inventory?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {itemPendingDelete
+                ? `${itemPendingDelete.medicineName} will be removed from this pharmacy inventory. You can add it again later from the catalog.`
+                : 'This item will be removed from the pharmacy inventory.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault();
+                void handleDeleteInventoryItem();
+              }}
+              disabled={isDeleting}
+            >
+              {isDeleting ? 'Removing...' : 'Remove'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </PharmacistLayout>
   );
 };

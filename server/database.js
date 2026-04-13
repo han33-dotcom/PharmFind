@@ -362,6 +362,22 @@ class Database {
     return newItem;
   }
 
+  static deleteInventoryItem(pharmacyId, medicineId) {
+    const inventory = this.read('pharmacyInventory');
+    const nextInventory = inventory.filter(
+      (item) =>
+        !(
+          Number(item.pharmacyId) === Number(pharmacyId) &&
+          Number(item.medicineId) === Number(medicineId)
+        )
+    );
+
+    if (nextInventory.length === inventory.length) return false;
+
+    this.write('pharmacyInventory', nextInventory);
+    return true;
+  }
+
   static getMedicinesByPharmacy(pharmacyId) {
     const inventory = this.read('pharmacyInventory');
     const medicines = this.read('medicines');

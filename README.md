@@ -32,6 +32,8 @@ cd server
 copy .env.example .env
 ```
 
+The default local backend env expects the frontend on `http://localhost:8082`.
+
 Start the backend microservices:
 
 ```sh
@@ -48,6 +50,8 @@ npm run dev
 
 The frontend runs on the Vite dev server and the backend services run on ports `4000` through `4006`.
 
+For Docker Compose, create a root `.env` or export `JWT_SECRET` before running `docker compose up --build`.
+
 ## Validation
 
 The repository is set up to run:
@@ -56,6 +60,7 @@ The repository is set up to run:
 - `npm run build`
 - `npm test`
 - `npm run test:e2e`
+- `npm run validate`
 
 `npm test` runs frontend smoke tests with Vitest plus backend integration tests.
 
@@ -65,7 +70,11 @@ The repository is set up to run:
 - pharmacist order acceptance
 - driver delivery lifecycle
 
+`npm run validate` runs the full merge gate locally: lint, build, smoke/integration tests, and browser E2E coverage.
+
 The GitHub Actions workflow is in [`/.github/workflows/ci.yml`](./.github/workflows/ci.yml).
+
+Contributor expectations are documented in [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 ## Docs
 

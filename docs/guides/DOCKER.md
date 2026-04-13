@@ -21,7 +21,7 @@ This guide shows how to run the PharmFind frontend (Vite) and backend microservi
 | Favorites      | `server/Dockerfile.favorites` | `4005`      |
 | Prescriptions  | `server/Dockerfile.prescriptions` | `4006`  |
 
-All Dockerfiles accept a `NODE_VERSION` build argument (defaults to `20-alpine`). The frontend Dockerfile also accepts `VITE_API_BASE_URL`.
+All Dockerfiles accept a `NODE_VERSION` build argument (defaults to `20-alpine`). The frontend Dockerfile also accepts the `VITE_*_API_URL` build args used by the service-specific API client.
 
 ## One-command local stack
 
@@ -33,7 +33,8 @@ What happens:
 
 - the microservice containers are built from the service-specific Dockerfiles in `server/`
 - `frontend` is built from `Dockerfile.frontend` and served on `http://localhost:5173`
-- the browser talks to the microservices on host ports `4000` through `4006` via the frontend's service-specific fallback URLs
+- the browser talks directly to the microservices on host ports `4000` through `4006`
+- compose now waits for healthy backend services before starting the frontend
 
 Stop the stack with `docker compose down` (use `-v` if you also want to delete the `pgdata` volume).
 
@@ -43,18 +44,20 @@ Backend defaults can be overridden in `docker-compose.yml` or an optional `serve
 
 | Variable       | Purpose | Default in Compose |
 |----------------|---------|--------------------|
-| `PORT`         | API port | `3000` |
+| `PORT`         | API port | service-specific `4000` to `4006` |
 | `JWT_SECRET`   | JWT signing key | required, no repo default |
 | `FRONTEND_URL` | Used in auth emails | `http://localhost:5173` |
+| `ALLOWED_ORIGINS` | Browser origins accepted by CORS | `http://localhost:5173` |
 | `EMAIL_MODE`   | `console` or `smtp` | `console` |
-| `DATABASE_URL` | Enables PostgreSQL driver | unset |
+| `DATABASE_URL` | Enables PostgreSQL driver | `postgres://pharm:pharm@postgres:5432/pharmdb` |
 
-For the frontend, pass `VITE_API_BASE_URL` as a build arg. Example:
+For the frontend, pass the service-specific `VITE_*_API_URL` build args when the browser should talk to non-localhost endpoints. Example:
 
 ```bash
 docker build \
   -f Dockerfile.frontend \
-  --build-arg VITE_API_BASE_URL=https://api.mypharmfind.com/api \
+  --build-arg VITE_AUTH_API_URL=https://auth.mypharmfind.com/api \
+  --build-arg VITE_MEDICINES_API_URL=https://medicines.mypharmfind.com/api \
   -t pharmfind-frontend .
 ```
 

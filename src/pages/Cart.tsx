@@ -26,12 +26,13 @@ import { CartIcon } from "@/components/CartIcon";
 import { useCart } from "@/contexts/CartContext";
 import { usePharmacyDetails } from "@/hooks/usePharmacyDetails";
 import { toast } from "@/hooks/use-toast";
+import { formatCurrency } from "@/lib/formatters";
 
 const Cart = () => {
   const navigate = useNavigate();
   const { cartItems, removeFromCart, updateQuantity, clearCart, getItemsByPharmacy } = useCart();
   const itemsByPharmacy = getItemsByPharmacy();
-  const pharmacyDetails = usePharmacyDetails(cartItems.map((item) => item.pharmacyId));
+  const { pharmacyDetails } = usePharmacyDetails(cartItems.map((item) => item.pharmacyId));
 
   const subtotal = cartItems.reduce((total, item) => total + item.price * item.quantity, 0);
   const deliveryPharmacies = new Set(
@@ -213,8 +214,8 @@ const Cart = () => {
 
                             {/* Price & Remove */}
                             <div className="text-right">
-                              <p className="font-semibold">${(item.price * item.quantity).toFixed(2)}</p>
-                              <p className="text-xs text-muted-foreground">${item.price} each</p>
+                              <p className="font-semibold">{formatCurrency(item.price * item.quantity)}</p>
+                              <p className="text-xs text-muted-foreground">{formatCurrency(item.price)} each</p>
                             </div>
 
                             <Button
@@ -231,12 +232,12 @@ const Cart = () => {
                         <div className="mt-4 pt-4 border-t">
                           <div className="flex justify-between text-sm">
                             <span>Subtotal:</span>
-                            <span className="font-semibold">${pharmacySubtotal.toFixed(2)}</span>
+                            <span className="font-semibold">{formatCurrency(pharmacySubtotal)}</span>
                           </div>
                           {hasDelivery && (
                             <div className="flex justify-between text-sm text-muted-foreground">
                               <span>Delivery fee:</span>
-                              <span>$1.00</span>
+                              <span>{formatCurrency(1)}</span>
                             </div>
                           )}
                         </div>
@@ -258,16 +259,16 @@ const Cart = () => {
                 <div className="space-y-2">
                   <div className="flex justify-between">
                     <span>Subtotal ({cartItems.length} items):</span>
-                    <span>${subtotal.toFixed(2)}</span>
+                    <span>{formatCurrency(subtotal)}</span>
                   </div>
                   <div className="flex justify-between text-sm text-muted-foreground">
                     <span>Delivery fees ({deliveryPharmacies.size} {deliveryPharmacies.size === 1 ? 'pharmacy' : 'pharmacies'}):</span>
-                    <span>${deliveryFees.toFixed(2)}</span>
+                    <span>{formatCurrency(deliveryFees)}</span>
                   </div>
                   <Separator />
                   <div className="flex justify-between text-lg font-bold">
                     <span>Total:</span>
-                    <span>${total.toFixed(2)}</span>
+                    <span>{formatCurrency(total)}</span>
                   </div>
                 </div>
 

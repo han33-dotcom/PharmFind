@@ -1,18 +1,18 @@
 import express from 'express';
-import cors from 'cors';
 import { v4 as uuidv4 } from 'uuid';
 import { authenticateToken } from '../lib/auth.js';
 import { loadDatabase } from '../lib/database.js';
-import { getEnv, loadServiceEnvironment } from '../lib/env.js';
+import { getNumberEnv, loadServiceEnvironment, validateServiceEnvironment } from '../lib/env.js';
+import { applyCommonMiddleware, sendHealthResponse } from '../lib/http.js';
 
 loadServiceEnvironment();
+validateServiceEnvironment('prescriptions-service', { defaultPort: 4006 });
 
 const PrescriptionsDatabase = await loadDatabase('prescriptions-service');
 const prescriptionsApp = express();
-const PRESCRIPTIONS_PORT = Number(getEnv('PORT', '4006'));
+const PRESCRIPTIONS_PORT = getNumberEnv('PORT', '4006');
 
-prescriptionsApp.use(cors());
-prescriptionsApp.use(express.json({ limit: '15mb' }));
+applyCommonMiddleware(prescriptionsApp, { jsonLimit: '15mb' });
 
 const mapPrescription = (prescription) => ({
   id: prescription.id,
@@ -68,7 +68,7 @@ const canAccessPrescription = async (userId, prescription) => {
 };
 
 prescriptionsApp.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', service: 'prescriptions', timestamp: new Date().toISOString() });
+  sendHealthResponse(res, 'prescriptions');
 });
 
 prescriptionsApp.post('/api/prescriptions/upload', authenticateToken, async (req, res) => {

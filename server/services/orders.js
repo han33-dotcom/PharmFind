@@ -1,18 +1,18 @@
 import express from 'express';
-import cors from 'cors';
 import { authenticateToken } from '../lib/auth.js';
 import { loadDatabase } from '../lib/database.js';
-import { getEnv, loadServiceEnvironment } from '../lib/env.js';
+import { getNumberEnv, loadServiceEnvironment, validateServiceEnvironment } from '../lib/env.js';
+import { applyCommonMiddleware, sendHealthResponse } from '../lib/http.js';
 
 loadServiceEnvironment();
+validateServiceEnvironment('orders-service', { defaultPort: 4003 });
 
 const OrdersDatabase = await loadDatabase('orders-service');
 const ordersApp = express();
-const ORDERS_PORT = Number(getEnv('PORT', '4003'));
+const ORDERS_PORT = getNumberEnv('PORT', '4003');
 const DRIVER_COORDINATE_FALLBACK = { lat: 33.8938, lng: 35.5018 };
 
-ordersApp.use(cors());
-ordersApp.use(express.json());
+applyCommonMiddleware(ordersApp);
 
 const mapOrderItem = (item) => ({
   medicineId: Number(item.medicineId ?? item.medicine_id),
@@ -133,7 +133,7 @@ const mapDriverOrder = (order) => {
 };
 
 ordersApp.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', service: 'orders', timestamp: new Date().toISOString() });
+  sendHealthResponse(res, 'orders');
 });
 
 ordersApp.get('/api/orders/pharmacist', authenticateToken, async (req, res) => {

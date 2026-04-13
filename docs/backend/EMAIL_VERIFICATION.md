@@ -29,7 +29,8 @@ Minimum local config:
 
 ```env
 EMAIL_MODE=console
-FRONTEND_URL=http://localhost:5173
+FRONTEND_URL=http://localhost:8082
+ALLOWED_ORIGINS=http://localhost:8082,http://127.0.0.1:4173
 ```
 
 SMTP example:
@@ -41,7 +42,8 @@ SMTP_PORT=587
 SMTP_USER=your-email@gmail.com
 SMTP_PASS=your-app-password
 EMAIL_FROM=noreply@pharmfind.com
-FRONTEND_URL=http://localhost:5173
+FRONTEND_URL=http://localhost:8082
+ALLOWED_ORIGINS=http://localhost:8082
 ```
 
 ## Endpoints

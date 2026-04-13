@@ -1,17 +1,17 @@
 import express from 'express';
-import cors from 'cors';
 import { authenticateToken } from '../lib/auth.js';
 import { loadDatabase } from '../lib/database.js';
-import { getEnv, loadServiceEnvironment } from '../lib/env.js';
+import { getNumberEnv, loadServiceEnvironment, validateServiceEnvironment } from '../lib/env.js';
+import { applyCommonMiddleware, sendHealthResponse } from '../lib/http.js';
 
 loadServiceEnvironment();
+validateServiceEnvironment('favorites-service', { defaultPort: 4005 });
 
 const FavoritesDatabase = await loadDatabase('favorites-service');
 const favApp = express();
-const FAV_PORT = Number(getEnv('PORT', '4005'));
+const FAV_PORT = getNumberEnv('PORT', '4005');
 
-favApp.use(cors());
-favApp.use(express.json());
+applyCommonMiddleware(favApp);
 
 const mapFavorite = (favorite) => ({
   medicineId: Number(favorite.medicineId ?? favorite.medicine_id),
@@ -24,7 +24,7 @@ const mapFavorite = (favorite) => ({
 });
 
 favApp.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', service: 'favorites', timestamp: new Date().toISOString() });
+  sendHealthResponse(res, 'favorites');
 });
 
 favApp.get('/api/users/me/favorites', authenticateToken, async (req, res) => {

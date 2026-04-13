@@ -278,6 +278,83 @@ test('auth recovery and patient account settings flow works end to end', async (
   );
 });
 
+test('pharmacist inventory management supports add, edit, filter-safe delete lifecycle', async () => {
+  const suffix = randomId();
+
+  const pharmacist = await api('POST', `${baseUrls.auth}/auth/register`, {
+    body: {
+      email: `inventory.pharmacist.${suffix}@example.com`,
+      password: 'StrongPass123!',
+      fullName: 'Inventory Pharmacist',
+      phone: '+96172002222',
+      role: 'pharmacist',
+    },
+    expectedStatus: 201,
+  });
+
+  await api('POST', `${baseUrls.pharmacies}/pharmacies/register`, {
+    token: pharmacist.token,
+    body: {
+      name: `Inventory Pharmacy ${suffix}`,
+      address: 'Inventory Street, Beirut',
+      phone: '+96118880000',
+      hours: { open: '08:00', close: '22:00' },
+    },
+    expectedStatus: 201,
+  });
+
+  const createdItem = await api('POST', `${baseUrls.pharmacies}/pharmacies/me/inventory`, {
+    token: pharmacist.token,
+    body: {
+      medicineId: 1,
+      price: 30,
+      quantity: 14,
+    },
+    expectedStatus: 201,
+  });
+
+  assert.equal(createdItem.medicineId, 1);
+  assert.equal(createdItem.stockStatus, 'In Stock');
+
+  const updatedItem = await api('PATCH', `${baseUrls.pharmacies}/pharmacies/me/inventory/1`, {
+    token: pharmacist.token,
+    body: {
+      price: 35,
+      quantity: 4,
+    },
+  });
+
+  assert.equal(updatedItem.price, 35);
+  assert.equal(updatedItem.stockLevel, 4);
+  assert.equal(updatedItem.stockStatus, 'Low Stock');
+
+  const secondItem = await api('POST', `${baseUrls.pharmacies}/pharmacies/me/inventory`, {
+    token: pharmacist.token,
+    body: {
+      medicineId: 3,
+      price: 42,
+      quantity: 2,
+    },
+    expectedStatus: 201,
+  });
+
+  assert.equal(secondItem.medicineId, 3);
+
+  await api('DELETE', `${baseUrls.pharmacies}/pharmacies/me/inventory/3`, {
+    token: pharmacist.token,
+    expectedStatus: 204,
+  });
+
+  const inventory = await api('GET', `${baseUrls.pharmacies}/pharmacies/me/inventory`, {
+    token: pharmacist.token,
+  });
+
+  assert.equal(inventory.data.length, 1);
+  assert.equal(inventory.data[0].medicineId, 1);
+  assert.equal(inventory.data[0].price, 35);
+  assert.equal(inventory.data[0].stockStatus, 'Low Stock');
+});
+
 test('prescription order lifecycle works across patient, pharmacist, and driver services', async () => {
   const suffix = randomId();
 

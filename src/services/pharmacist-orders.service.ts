@@ -80,8 +80,19 @@ export class PharmacistOrdersService {
     return response.data || [];
   }
 
+  static async updateInventoryItem(
+    medicineId: number | string,
+    updates: {
+      price?: number;
+      quantity?: number;
+      stockStatus?: InventoryItem["stockStatus"];
+    },
+  ): Promise<InventoryItem> {
+    return apiClient.patch<InventoryItem>(`/pharmacies/me/inventory/${medicineId}`, updates);
+  }
+
   static async updateInventoryAvailability(item: InventoryItem, isAvailable: boolean): Promise<InventoryItem> {
-    return apiClient.patch<InventoryItem>(`/pharmacies/me/inventory/${item.medicineId ?? item.id}`, {
+    return this.updateInventoryItem(item.medicineId ?? item.id, {
       stockStatus: isAvailable ? "In Stock" : "Out of Stock",
       quantity: isAvailable ? Math.max(item.minStockLevel, item.stockLevel || item.minStockLevel) : 0,
     });
@@ -93,5 +104,9 @@ export class PharmacistOrdersService {
     quantity: number;
   }): Promise<InventoryItem> {
     return apiClient.post<InventoryItem>("/pharmacies/me/inventory", data);
+  }
+
+  static async deleteInventoryItem(medicineId: number | string): Promise<void> {
+    await apiClient.delete(`/pharmacies/me/inventory/${medicineId}`);
   }
 }
