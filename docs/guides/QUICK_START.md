@@ -1,10 +1,10 @@
 # PharmFind Quick Start
 
-Get PharmFind running locally with the current microservices setup.
+This is the shortest path to seeing the MVP running locally.
 
 ## Prerequisites
 
-- Node.js 20+
+- Node.js 20 or newer
 - npm
 
 ## 1. Install Dependencies
@@ -16,40 +16,52 @@ npm install
 npm --prefix server install
 ```
 
-## 2. Create Environment Files
+## 2. Create The Backend Environment File
 
-Frontend `.env`:
+The frontend already knows how to talk to the local microservices by default, so the only required env file for normal local development is the backend one.
 
-```env
-VITE_API_BASE_URL=http://localhost:4000/api
-VITE_ENABLE_MOCK_DATA=false
+```bash
+cd server
+copy .env.example .env
 ```
 
-Backend `server/.env`:
+Minimum values are already in the example:
 
 ```env
+NODE_ENV=development
 JWT_SECRET=replace-with-a-long-random-secret
 FRONTEND_URL=http://localhost:8082
 ALLOWED_ORIGINS=http://localhost:8082,http://127.0.0.1:4173
 EMAIL_MODE=console
 ```
 
-## 3. Start the Application
+## 3. Start The Backend
 
-Terminal 1, backend:
+In the `server/` directory:
 
 ```bash
-cd server
 npm start
 ```
 
-Terminal 2, frontend:
+That starts:
+
+- auth on `4000`
+- medicines on `4001`
+- pharmacies on `4002`
+- orders on `4003`
+- addresses on `4004`
+- favorites on `4005`
+- prescriptions on `4006`
+
+## 4. Start The Frontend
+
+In a second terminal from the repo root:
 
 ```bash
 npm run dev
 ```
 
-## 4. Open the App
+## 5. Open The App
 
 Open:
 
@@ -57,18 +69,33 @@ Open:
 http://localhost:8082
 ```
 
-Backend services run on:
+## Optional Frontend Environment
 
-- `http://localhost:4000` auth
-- `http://localhost:4001` medicines
-- `http://localhost:4002` pharmacies
-- `http://localhost:4003` orders
-- `http://localhost:4004` addresses
-- `http://localhost:4005` favorites
-- `http://localhost:4006` prescriptions
+You only need a root `.env` if the frontend should talk to non-default service URLs. Copy `.env.example` and change the `VITE_*_API_URL` values when targeting another environment.
 
-## Troubleshooting
+## Quick Health Check
 
-- If the backend does not start, make sure ports `4000` through `4006` are available.
-- If the frontend does not connect, confirm the backend services are healthy and restart Vite.
-- For more detail, see [SETUP.md](./SETUP.md) and [../../server/README.md](../../server/README.md).
+Examples:
+
+```bash
+curl http://localhost:4000/api/health
+curl http://localhost:4001/api/health
+```
+
+If both return success, the frontend should be able to load.
+
+## What To Do First In The UI
+
+The MVP supports three working roles:
+
+- register as a `patient` to search medicines and place orders
+- register as a `pharmacist` to create a pharmacy and manage inventory
+- register as a `driver` to accept and complete deliveries
+
+## If Something Fails
+
+- If the backend does not start, check that ports `4000` through `4006` are free.
+- If the frontend loads but API calls fail, check `ALLOWED_ORIGINS` in `server/.env`.
+- If email flows are being tested locally, keep `EMAIL_MODE=console` and copy links from the auth service logs.
+
+For the full local setup, use [SETUP.md](./SETUP.md).

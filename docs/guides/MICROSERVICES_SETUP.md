@@ -1,88 +1,146 @@
-**Microservices Setup**
+# Microservices Guide
 
-- **Overview:**: This project splits the backend into several small Node.js microservices located in the `server/` folder. Each microservice can run individually (via `npm` scripts) or together using `docker-compose`.
+This guide explains how the PharmFind backend is split, how to run the services together or separately, and how the frontend is expected to integrate with them.
 
-**Requirements:**
-- **Docker:**: Docker Engine and Docker Compose v2+.
-- **Node:**: Node 18+ (for local development) and `npm`.
+## Why The Repo Uses Microservices
 
-**Local development (run one service at a time)**
-- **Change dir:**: `cd server`
-- **Install deps:**: `npm ci`
-- **Start a service:**: use one of the npm scripts added to `server/package.json`.
+The MVP is structured around service boundaries that match product responsibilities:
 
-Commands (PowerShell / Windows):
-```powershell
-cd server
-npm ci
-npm run start:auth       # start auth service on port 4000
-npm run start:medicines  # start medicines service on port 4001
-npm run start:pharmacies # start pharmacies service on port 4002
-npm run start:orders     # start orders service on port 4003
-npm run start:addresses  # start addresses service on port 4004
-npm run start:favorites  # start favorites service on port 4005
-npm run start:prescriptions # start prescriptions service on port 4006
-# Start all microservices together:
+- auth concerns stay in auth
+- catalog concerns stay in medicines
+- pharmacy profile and inventory concerns stay in pharmacies
+- order lifecycle concerns stay in orders
+- user-owned addresses and favorites stay isolated
+- prescription file handling stays separate from general order logic
+
+This keeps service ownership clear and makes the frontend integration more explicit.
+
+## Service Responsibilities
+
+| Service | Port | Owns |
+| --- | --- | --- |
+| Auth | `4000` | users, JWTs, profile, verification, password reset |
+| Medicines | `4001` | medicine catalog and search |
+| Pharmacies | `4002` | pharmacy registration, pharmacy profile, inventory |
+| Orders | `4003` | patient orders, pharmacist actions, driver actions |
+| Addresses | `4004` | saved addresses |
+| Favorites | `4005` | saved favorites |
+| Prescriptions | `4006` | prescription upload and retrieval |
+
+## Shared Backend Infrastructure
+
+The services are intentionally thin. Common behavior lives in:
+
+- `server/lib/env.js`: environment loading and validation
+- `server/lib/http.js`: common HTTP bootstrapping and security headers
+- `server/lib/auth.js`: token generation and authentication middleware
+- `server/lib/rate-limit.js`: rate limiting primitives
+- `server/lib/database.js`: storage-mode switch between JSON and PostgreSQL
+
+This means service files should mostly contain service-specific route logic, not repeated bootstrapping code.
+
+## Running The Full Service Set Locally
+
+From `server/`:
+
+```bash
+npm install
+copy .env.example .env
 npm start
 ```
 
-- **Notes:** Each microservice reads the DB configuration from `DATABASE_URL` (if set) and will fallback to built-in JSON file DB if not provided.
+Use this when you are validating real user flows or working across service boundaries.
 
-**Run all services with Docker Compose**
-- **Build and start everything:**
-```powershell
-# from repository root
-docker compose up --build
-```
-- **Run a single service in Docker:**
-```powershell
-# build and start only auth service
-docker compose up --build auth
-```
+## Running A Single Service
 
-- **Stop and remove containers:**
-```powershell
-docker compose down
+From `server/`:
+
+```bash
+npm run start:auth
+npm run start:medicines
+npm run start:pharmacies
+npm run start:orders
+npm run start:addresses
+npm run start:favorites
+npm run start:prescriptions
 ```
 
-**Environment and secrets**
-- The compose file expects `JWT_SECRET` to be supplied from your environment or `.env` file. For local development you should create `server/.env` from `server/.env.example`.
+Use this when:
 
-Example `server/.env` (keep out of source control):
-```
-DATABASE_URL=postgres://pharm:pharm@postgres:5432/pharmdb
-JWT_SECRET=your_local_secret_here
-FRONTEND_URL=http://localhost:8082
-ALLOWED_ORIGINS=http://localhost:8082,http://127.0.0.1:4173
-SMTP_USER=
-SMTP_PASS=
-EMAIL_MODE=console
+- you are focused on one backend area
+- you do not need a full product flow
+- you want tighter logs for one service
+
+## Data Mode Behavior
+
+If `DATABASE_URL` is missing:
+
+- the backend uses the JSON adapter
+- data is stored under `server/data/`
+
+If `DATABASE_URL` is present:
+
+- the backend uses the PostgreSQL adapter
+- the schema in `server/database/schema.sql` becomes the relevant contract
+
+This selection is centralized in `server/lib/database.js`, not reimplemented in each service.
+
+## Frontend Integration Model
+
+The frontend does not assume a single gateway in local development. It uses service-specific base URLs from `src/services/api/config.ts`.
+
+Default local URLs:
+
+- `VITE_AUTH_API_URL=http://localhost:4000/api`
+- `VITE_MEDICINES_API_URL=http://localhost:4001/api`
+- `VITE_PHARMACIES_API_URL=http://localhost:4002/api`
+- `VITE_ORDERS_API_URL=http://localhost:4003/api`
+- `VITE_ADDRESSES_API_URL=http://localhost:4004/api`
+- `VITE_FAVORITES_API_URL=http://localhost:4005/api`
+- `VITE_PRESCRIPTIONS_API_URL=http://localhost:4006/api`
+
+`VITE_API_BASE_URL` remains as a fallback for environments where a gateway sits in front of the services.
+
+## Health Checks
+
+Every service exposes:
+
+```text
+GET /api/health
 ```
 
-**Database initialization**
-- If you use Postgres (via Docker Compose) you can run the provided setup/seed script:
-```powershell
-cd server
-node database/setup.js
-```
+Quick smoke checks:
 
-**Quick smoke tests (curl)**
-- Health checks:
-```powershell
+```bash
 curl http://localhost:4000/api/health
-curl http://localhost:4001/api/health
-```
-- Example protected request (replace TOKEN):
-```powershell
-curl -H "Authorization: Bearer TOKEN" http://localhost:4000/api/auth/me
+curl http://localhost:4003/api/health
 ```
 
-**Production notes**
-- Move secrets into a secure secret store or environment variables managed by your deployment system.
-- Use proper SMTP credentials and set `EMAIL_MODE=smtp` when sending real emails.
-- Adjust ports, scaling and networking in `docker-compose.yml` for production use.
+## Testing In A Microservices Repo
 
-If you want, I can:
-- Add `server/.env.example` to the repo and wire the compose file to use `env_file`.
-- Add a single command script to run a local multi-service dev environment (e.g., `concurrently`).
-- Create a minimal health check endpoint for the frontend to depend on.
+The repo uses multiple layers of checks:
+
+- frontend smoke tests
+- backend integration tests
+- Playwright browser flows against the real app
+
+Important:
+
+- the backend integration suite and Playwright suite should run sequentially, not in parallel, because they create local processes and share ports and data paths
+
+## Docker And Kubernetes
+
+If you want a containerized microservices stack instead of a local Node runtime:
+
+- use [DOCKER.md](./DOCKER.md) for Docker Compose
+- use [../../infra/README.md](../../infra/README.md) plus `infra/k8s/` for the Kubernetes baseline
+
+## When To Change The Service Boundaries
+
+Do not create a new service just because a feature is new. A new service only makes sense when:
+
+- the ownership boundary is truly different
+- the data model and runtime concerns are distinct
+- the operational cost is justified
+
+For most MVP work, extending an existing service is the correct move.

@@ -1,92 +1,183 @@
-# Dockerizing PharmFind
+# Docker Guide
 
-This guide shows how to run the PharmFind frontend (Vite) and backend microservices with Docker and Docker Compose.
+This guide explains how to run the full PharmFind MVP in containers. The Docker path is useful when you want a stack closer to deployment than the default local JSON-backed development flow.
+
+## What The Compose Stack Runs
+
+The root `docker-compose.yml` starts:
+
+- PostgreSQL
+- auth
+- medicines
+- pharmacies
+- orders
+- addresses
+- favorites
+- prescriptions
+- frontend
+
+The frontend is served from Nginx on:
+
+```text
+http://localhost:5173
+```
 
 ## Prerequisites
 
-- Docker Engine 24+
-- Docker Compose V2 (bundled with modern Docker Desktop)
-- (Optional) A `.env` file inside `server/` that overrides default backend secrets
+- Docker Engine 24 or newer
+- Docker Compose V2
 
-## Build Contexts & Images
+## Required Secret
 
-| Service        | Dockerfile                    | Port (host) |
-|----------------|-------------------------------|-------------|
-| Frontend       | `Dockerfile.frontend`         | `5173`      |
-| Auth           | `server/Dockerfile.auth`      | `4000`      |
-| Medicines      | `server/Dockerfile.medicines` | `4001`      |
-| Pharmacies     | `server/Dockerfile.pharmacies`| `4002`      |
-| Orders         | `server/Dockerfile.orders`    | `4003`      |
-| Addresses      | `server/Dockerfile.addresses` | `4004`      |
-| Favorites      | `server/Dockerfile.favorites` | `4005`      |
-| Prescriptions  | `server/Dockerfile.prescriptions` | `4006`  |
+The compose file does not ship a default JWT secret. Set one before startup.
 
-All Dockerfiles accept a `NODE_VERSION` build argument (defaults to `20-alpine`). The frontend Dockerfile also accepts the `VITE_*_API_URL` build args used by the service-specific API client.
+PowerShell:
 
-## One-command local stack
+```powershell
+$env:JWT_SECRET='local-dev-secret'
+docker compose up --build
+```
+
+Bash:
+
+```bash
+JWT_SECRET=local-dev-secret docker compose up --build
+```
+
+## What Compose Configures For You
+
+- PostgreSQL is used automatically through `DATABASE_URL`
+- backend services wait for PostgreSQL health before starting
+- the frontend waits for the backend services to become healthy
+- frontend build arguments point at the correct service-specific local URLs
+- health checks are wired for both backend services and the frontend container
+
+## Host Ports
+
+| Service | Host Port |
+| --- | --- |
+| Frontend | `5173` |
+| Auth | `4000` |
+| Medicines | `4001` |
+| Pharmacies | `4002` |
+| Orders | `4003` |
+| Addresses | `4004` |
+| Favorites | `4005` |
+| Prescriptions | `4006` |
+| PostgreSQL | internal only by default |
+
+## Dockerfiles In Use
+
+| Component | Dockerfile |
+| --- | --- |
+| Frontend | `Dockerfile.frontend` |
+| Auth | `server/Dockerfile.auth` |
+| Medicines | `server/Dockerfile.medicines` |
+| Pharmacies | `server/Dockerfile.pharmacies` |
+| Orders | `server/Dockerfile.orders` |
+| Addresses | `server/Dockerfile.addresses` |
+| Favorites | `server/Dockerfile.favorites` |
+| Prescriptions | `server/Dockerfile.prescriptions` |
+
+All service images accept `NODE_VERSION` as a build argument. The frontend image also accepts `VITE_*_API_URL` values for environments where the browser should not use the default localhost ports.
+
+## Common Commands
+
+Start the full stack:
 
 ```bash
 docker compose up --build
 ```
 
-What happens:
+Run in the background:
 
-- the microservice containers are built from the service-specific Dockerfiles in `server/`
-- `frontend` is built from `Dockerfile.frontend` and served on `http://localhost:5173`
-- the browser talks directly to the microservices on host ports `4000` through `4006`
-- compose now waits for healthy backend services before starting the frontend
+```bash
+docker compose up --build -d
+```
 
-Stop the stack with `docker compose down` (use `-v` if you also want to delete the `pgdata` volume).
+Stop the stack:
 
-## Environment variables
+```bash
+docker compose down
+```
 
-Backend defaults can be overridden in `docker-compose.yml` or an optional `server/.env` file:
+Stop and remove the PostgreSQL volume too:
 
-| Variable       | Purpose | Default in Compose |
-|----------------|---------|--------------------|
-| `PORT`         | API port | service-specific `4000` to `4006` |
-| `JWT_SECRET`   | JWT signing key | required, no repo default |
-| `FRONTEND_URL` | Used in auth emails | `http://localhost:5173` |
-| `ALLOWED_ORIGINS` | Browser origins accepted by CORS | `http://localhost:5173` |
-| `EMAIL_MODE`   | `console` or `smtp` | `console` |
-| `DATABASE_URL` | Enables PostgreSQL driver | `postgres://pharm:pharm@postgres:5432/pharmdb` |
+```bash
+docker compose down -v
+```
 
-For the frontend, pass the service-specific `VITE_*_API_URL` build args when the browser should talk to non-localhost endpoints. Example:
+Inspect the generated configuration:
+
+```bash
+docker compose config
+```
+
+## Environment Behavior
+
+The compose stack sets:
+
+- `NODE_ENV=production`
+- `DATABASE_URL=postgres://pharm:pharm@postgres:5432/pharmdb`
+- `FRONTEND_URL=http://localhost:5173`
+- `ALLOWED_ORIGINS=http://localhost:5173`
+- `EMAIL_MODE=console`
+
+That means:
+
+- the containerized stack uses PostgreSQL, not JSON files
+- browser-origin CORS is aligned to the Docker frontend URL
+- email verification and password reset links are still emitted to logs by default
+
+## Building Images For Other Environments
+
+Example frontend build with non-local service URLs:
 
 ```bash
 docker build \
   -f Dockerfile.frontend \
-  --build-arg VITE_AUTH_API_URL=https://auth.mypharmfind.com/api \
-  --build-arg VITE_MEDICINES_API_URL=https://medicines.mypharmfind.com/api \
+  --build-arg VITE_AUTH_API_URL=https://auth.example.com/api \
+  --build-arg VITE_MEDICINES_API_URL=https://medicines.example.com/api \
+  --build-arg VITE_PHARMACIES_API_URL=https://pharmacies.example.com/api \
+  --build-arg VITE_ORDERS_API_URL=https://orders.example.com/api \
+  --build-arg VITE_ADDRESSES_API_URL=https://addresses.example.com/api \
+  --build-arg VITE_FAVORITES_API_URL=https://favorites.example.com/api \
+  --build-arg VITE_PRESCRIPTIONS_API_URL=https://prescriptions.example.com/api \
   -t pharmfind-frontend .
 ```
 
-## Running services independently
-
-Example: auth service only
+Example single service image build:
 
 ```bash
 docker build -f server/Dockerfile.auth -t pharmfind-auth ./server
-docker run --rm -p 4000:4000 \
-  -e PORT=4000 \
-  -e JWT_SECRET=supersecret \
-  -e FRONTEND_URL=http://localhost:5173 \
-  pharmfind-auth
 ```
 
-### Frontend only
+## Operational Notes
+
+- the compose stack is appropriate for local integration and demo environments
+- it is not a full production platform by itself
+- production deployments still need proper secret management, TLS, logging, and monitoring
+- if you use SMTP in containers, provide the SMTP env variables explicitly instead of relying on the default console mode
+
+## Troubleshooting
+
+### Frontend is up but API requests fail
+
+Check:
+
+- the backend containers are healthy
+- `JWT_SECRET` was provided before startup
+- no other local processes are already binding ports `4000` through `4006`
+
+### I want to reset the database
+
+Run:
 
 ```bash
-docker build -t pharmfind-frontend \
-  --build-arg VITE_API_BASE_URL=https://api.example.com/api \
-  -f Dockerfile.frontend .
-docker run --rm -p 5173:80 pharmfind-frontend
+docker compose down -v
+docker compose up --build
 ```
 
-## Production tips
+### I want the browser to use a different API hostname
 
-- Replace the JSON datastore with PostgreSQL and pass `DATABASE_URL` plus credentials to the backend container.
-- Use a secrets manager (Docker secrets, Vault, etc.) for JWT and SMTP credentials.
-- Add HTTPS termination (e.g., reverse proxy or a cloud load balancer) in front of the Nginx frontend or serve the static assets from a CDN.
-- Build multi-arch images by passing `--platform` to `docker buildx build`.
-
+Rebuild the frontend image with the appropriate `VITE_*_API_URL` build arguments.

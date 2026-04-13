@@ -1,325 +1,160 @@
 # Backend Integration Guide
 
-This document provides comprehensive guidance for backend developers to integrate the PharmFind frontend with a backend API.
+This document describes the current PharmFind `v1.0` backend contract as used by the frontend. It is not a speculative API design document. It is the integration guide for the working MVP.
 
-## Quick Start
+## Integration Model
 
-1. **Review Database Schema**: See `DATABASE_SCHEMA.md` for complete database structure
-2. **Check Service Files**: All API calls are centralized in `src/services/*.service.ts`
-3. **Feature Flag**: Set `VITE_ENABLE_MOCK_DATA=false` in `.env` when your API is ready
-4. **Test Endpoints**: Use the provided endpoint documentation below
+The frontend talks to individual microservices through the service layer in `src/services/`. Routing is resolved in `src/services/api/config.ts`.
 
----
+Default local base URLs:
 
-## Architecture Overview
+| Area | Default Base URL |
+| --- | --- |
+| Auth | `http://localhost:4000/api` |
+| Medicines | `http://localhost:4001/api` |
+| Pharmacies | `http://localhost:4002/api` |
+| Orders | `http://localhost:4003/api` |
+| Addresses | `http://localhost:4004/api` |
+| Favorites | `http://localhost:4005/api` |
+| Prescriptions | `http://localhost:4006/api` |
 
-```
-┌─────────────┐      ┌──────────────┐      ┌────────────┐
-│   React     │─────▶│   Services   │─────▶│  Backend   │
-│ Components  │      │    Layer     │      │    API     │
-└─────────────┘      └──────────────┘      └────────────┘
-      │                     │                     │
-      │                     │                     │
-      ▼                     ▼                     ▼
-  UI/UX Only         API Calls            Database
-  (You don't         (Replace mock        (Implement
-   touch this)        implementations)     schema)
-```
+`VITE_API_BASE_URL` remains as a fallback for environments where a gateway sits in front of the microservices.
 
-### Key Principles
+## Cross-Cutting Rules
 
-1. **Frontend Components** (`src/pages/`, `src/components/`) - **DO NOT MODIFY**
-   - All UI/UX is complete and should not be changed
-   - Components consume data through Context providers
+### Authentication
 
-2. **Service Layer** (`src/services/`) - **REPLACE MOCK IMPLEMENTATIONS**
-   - Each service file contains TODO comments marking where to add real API calls
-   - Currently returns mock data when `API_CONFIG.useMockData = true`
-   - Replace mock logic with real HTTP calls to your backend
+- JWTs are issued by the auth service.
+- Protected requests send `Authorization: Bearer <token>`.
+- Role trust is server-side. The backend does not rely on client-selected role state.
 
-3. **Context Providers** (`src/contexts/`) - **MAY NEED MINOR UPDATES**
-   - Already set up to call service layer
-   - May need minor adjustments if your API responses differ from expected format
+### Response Shape
 
----
+The repo does not enforce one universal envelope for every endpoint. Some endpoints return entity objects directly, while others return wrapped objects such as `{ data: [...] }` or `{ categories: [...] }`.
 
-## API Endpoints Reference
+The practical rule is:
 
-All endpoints should be prefixed with your API base URL (configured in `.env`).
+- keep frontend service adapters aligned to the current endpoint shape
+- when changing a route contract, update the corresponding frontend service in the same branch
 
-### Authentication (Future Feature)
+### Error Handling
 
-```http
-POST   /auth/register          # Register new user
-POST   /auth/login             # Login user
-POST   /auth/logout            # Logout user
-GET    /auth/me                # Get current user profile
-POST   /auth/forgot-password   # Request password reset
-POST   /auth/reset-password    # Reset password with token
-```
+The frontend API client expects normal HTTP status codes and JSON responses. For behavioral changes, prefer explicit JSON error messages rather than silent `500` responses or HTML fallbacks.
 
-**Note**: Authentication is not currently implemented in frontend. You may add this as next phase.
+### Mock Data
 
----
+Mock mode exists only as an explicit opt-in. The default expectation for the MVP is real backend integration.
 
-### Medicines API
+## Frontend Service Mapping
 
-#### Search Medicines
-```http
-GET /medicines?search={query}&category={category}&page={page}&limit={limit}
-```
+These files are the integration boundary from the frontend:
 
-**Query Parameters:**
-- `search` (optional): Medicine name to search
-- `category` (optional): Filter by category
-- `page` (optional): Page number for pagination
-- `limit` (optional): Results per page
+- `src/services/auth.service.ts`
+- `src/services/medicines.service.ts`
+- `src/services/pharmacies.service.ts`
+- `src/services/orders.service.ts`
+- `src/services/addresses.service.ts`
+- `src/services/favorites.service.ts`
+- `src/services/prescriptions.service.ts`
+- `src/services/pharmacist-orders.service.ts`
+- `src/services/driver.service.ts`
 
-**Response:**
-```json
-{
-  "data": [
-    {
-      "id": 1,
-      "name": "Panadol Extra",
-      "category": "Pain Relief",
-      "basePrice": 25.00,
-      "description": "Fast relief from headaches and pain",
-      "manufacturer": "GSK",
-      "requiresPrescription": false,
-      "pharmacyId": 1,
-      "pharmacyName": "El Ezaby Pharmacy",
-      "price": 27.50,
-      "stockStatus": "In Stock",
-      "lastUpdated": "2025-01-15T10:30:00Z"
-    }
-  ],
-  "pagination": {
-    "page": 1,
-    "limit": 20,
-    "total": 150,
-    "pages": 8
-  }
-}
-```
+If a backend route changes, these are the first frontend files that usually need to change.
 
-#### Get Medicine by ID
-```http
-GET /medicines/{id}
-```
+## Active API Surface
 
-**Response:**
-```json
-{
-  "id": 1,
-  "name": "Panadol Extra",
-  "category": "Pain Relief",
-  "basePrice": 25.00,
-  "description": "Fast relief from headaches and pain",
-  "manufacturer": "GSK",
-  "requiresPrescription": false
-}
-```
+### Auth service
 
-#### Get Medicine Categories
-```http
-GET /medicines/categories
-```
+Public:
 
-**Response:**
-```json
-{
-  "categories": [
-    "Pain Relief",
-    "Antibiotics",
-    "Vitamins",
-    "Cold & Flu",
-    "Allergy",
-    "Digestive Health",
-    "First Aid",
-    "Hygiene"
-  ]
-}
-```
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+- `GET /api/auth/verify-email`
+- `POST /api/auth/forgot-password`
+- `POST /api/auth/reset-password`
+- `GET /api/health`
 
----
+Authenticated:
 
-### Pharmacies API
+- `GET /api/auth/me`
+- `PATCH /api/auth/me`
+- `DELETE /api/auth/me`
+- `POST /api/auth/resend-verification`
 
-#### Search Pharmacies
-```http
-GET /pharmacies?lat={latitude}&lng={longitude}&radius={radius}&open={boolean}
-```
+Key behavior:
 
-**Query Parameters:**
-- `lat` (optional): User's latitude
-- `lng` (optional): User's longitude  
-- `radius` (optional): Search radius in km (default: 10)
-- `open` (optional): Filter by open/closed status
+- registration persists the selected server-trusted role
+- password reset and email verification can run in `console` or `smtp` mode
+- auth rate limiting is applied on the sensitive public endpoints
 
-**Response:**
-```json
-{
-  "data": [
-    {
-      "id": 1,
-      "name": "El Ezaby Pharmacy",
-      "address": "123 Main St, Nasr City, Cairo",
-      "phone": "+20 2 1234 5678",
-      "rating": 4.5,
-      "distance": "0.8 km",
-      "deliveryTime": "20-30 min",
-      "deliveryFee": 15.00,
-      "isOpen": true,
-      "latitude": 30.0444,
-      "longitude": 31.2357,
-      "hours": {
-        "open": "08:00",
-        "close": "23:00"
-      }
-    }
-  ]
-}
-```
+### Medicines service
 
-#### Get Pharmacy by ID
-```http
-GET /pharmacies/{id}
-```
+- `GET /api/health`
+- `GET /api/medicines`
+- `GET /api/medicines/categories`
+- `GET /api/medicines/catalog`
+- `GET /api/medicines/:id`
 
-**Response:** Same structure as search result item
+Key behavior:
 
-#### Get Pharmacy Inventory
-```http
-GET /pharmacies/{pharmacyId}/medicines?category={category}&inStock={boolean}
-```
+- `GET /api/medicines` is the main search path
+- `GET /api/medicines/catalog` is used for pharmacist inventory onboarding
 
-**Response:**
-```json
-{
-  "pharmacyId": 1,
-  "pharmacyName": "El Ezaby Pharmacy",
-  "medicines": [
-    {
-      "id": 1,
-      "name": "Panadol Extra",
-      "category": "Pain Relief",
-      "price": 27.50,
-      "stockStatus": "In Stock",
-      "requiresPrescription": false
-    }
-  ]
-}
-```
+### Pharmacies service
 
----
+Public:
 
-### Orders API
+- `GET /api/health`
+- `GET /api/pharmacies`
+- `GET /api/pharmacies/:id`
+- `GET /api/pharmacies/:id/medicines`
 
-#### Create Order
-```http
-POST /orders
-```
+Authenticated pharmacist paths:
 
-**Request Body:**
-```json
-{
-  "orderId": "ORD-1737891234567",
-  "items": [
-    {
-      "medicineId": 1,
-      "medicineName": "Panadol Extra",
-      "pharmacyId": 1,
-      "pharmacyName": "El Ezaby Pharmacy",
-      "quantity": 2,
-      "price": 27.50,
-      "type": "delivery"
-    }
-  ],
-  "subtotal": 55.00,
-  "deliveryFees": 15.00,
-  "total": 70.00,
-  "deliveryAddress": "123 Main St, Cairo",
-  "phoneNumber": "+20 1234567890",
-  "paymentMethod": "Cash on Delivery"
-}
-```
+- `POST /api/pharmacies/register`
+- `GET /api/pharmacies/me`
+- `PATCH /api/pharmacies/me`
+- `GET /api/pharmacies/me/inventory`
+- `POST /api/pharmacies/me/inventory`
+- `PATCH /api/pharmacies/me/inventory/:medicineId`
+- `DELETE /api/pharmacies/me/inventory/:medicineId`
+- `GET /api/pharmacies/:id/verification-status`
 
-**Response:**
-```json
-{
-  "orderId": "ORD-1737891234567",
-  "status": "Pending",
-  "createdAt": "2025-01-26T14:30:00Z",
-  "statusHistory": [
-    {
-      "status": "Pending",
-      "timestamp": "2025-01-26T14:30:00Z",
-      "note": "Order placed successfully"
-    }
-  ],
-  "items": [...],
-  "subtotal": 55.00,
-  "deliveryFees": 15.00,
-  "total": 70.00,
-  "deliveryAddress": "123 Main St, Cairo",
-  "phoneNumber": "+20 1234567890",
-  "paymentMethod": "Cash on Delivery"
-}
-```
+Key behavior:
 
-#### Get All Orders (for current user)
-```http
-GET /orders?status={status}&page={page}&limit={limit}
-```
+- pharmacy registration is pharmacist-only
+- inventory ownership is enforced server-side
+- a newly registered pharmacy can onboard inventory through the `me/inventory` routes
 
-**Query Parameters:**
-- `status` (optional): Filter by order status
-- `page` (optional): Page number
-- `limit` (optional): Results per page
+### Orders service
 
-**Response:**
-```json
-{
-  "data": [
-    {
-      "orderId": "ORD-1737891234567",
-      "status": "Delivered",
-      "createdAt": "2025-01-26T14:30:00Z",
-      "items": [...],
-      "total": 70.00
-    }
-  ],
-  "pagination": {
-    "page": 1,
-    "limit": 20,
-    "total": 45,
-    "pages": 3
-  }
-}
-```
+Patient-facing:
 
-#### Get Order by ID
-```http
-GET /orders/{orderId}
-```
+- `GET /api/health`
+- `GET /api/orders`
+- `GET /api/orders/:orderId`
+- `POST /api/orders`
+- `PATCH /api/orders/:orderId/status`
 
-**Response:** Same structure as create order response
+Pharmacist-facing:
 
-#### Update Order Status
-```http
-PATCH /orders/{orderId}/status
-```
+- `GET /api/orders/pharmacist`
+- `GET /api/orders/pharmacist/:orderId`
+- `PATCH /api/orders/pharmacist/:orderId/status`
 
-**Request Body:**
-```json
-{
-  "status": "Confirmed",
-  "note": "Order confirmed by pharmacy"
-}
-```
+Driver-facing:
 
-**Valid Status Values:**
+- `GET /api/orders/driver/available`
+- `GET /api/orders/driver/active`
+- `GET /api/orders/driver/history`
+- `GET /api/orders/driver/stats`
+- `POST /api/orders/driver/:orderId/accept`
+- `POST /api/orders/driver/:orderId/pickup`
+- `POST /api/orders/driver/:orderId/in-transit`
+- `POST /api/orders/driver/:orderId/delivered`
+
+Canonical order statuses:
+
 - `Pending`
 - `Confirmed`
 - `Preparing`
@@ -327,404 +162,88 @@ PATCH /orders/{orderId}/status
 - `Delivered`
 - `Cancelled`
 
-**Response:**
-```json
-{
-  "orderId": "ORD-1737891234567",
-  "status": "Confirmed",
-  "statusHistory": [
-    {
-      "status": "Pending",
-      "timestamp": "2025-01-26T14:30:00Z"
-    },
-    {
-      "status": "Confirmed",
-      "timestamp": "2025-01-26T14:35:00Z",
-      "note": "Order confirmed by pharmacy"
-    }
-  ]
-}
-```
+### Addresses service
 
-#### Cancel Order
-```http
-DELETE /orders/{orderId}
-# OR
-PATCH /orders/{orderId}/status
-{
-  "status": "Cancelled",
-  "reason": "Customer requested cancellation"
-}
-```
+- `GET /api/health`
+- `GET /api/users/me/addresses`
+- `GET /api/users/me/addresses/:id`
+- `POST /api/users/me/addresses`
+- `PUT /api/users/me/addresses/:id`
+- `DELETE /api/users/me/addresses/:id`
 
----
+### Favorites service
 
-### Addresses API (User-specific)
+- `GET /api/health`
+- `GET /api/users/me/favorites`
+- `GET /api/users/me/favorites/:medicineId/exists`
+- `POST /api/users/me/favorites`
+- `DELETE /api/users/me/favorites/:medicineId`
 
-#### Get All Addresses
-```http
-GET /users/me/addresses
-```
+### Prescriptions service
 
-**Response:**
-```json
-{
-  "data": [
-    {
-      "id": "addr-123",
-      "nickname": "Home",
-      "fullName": "John Doe",
-      "address": "123 Main St",
-      "building": "Building 5",
-      "floor": "3rd Floor",
-      "phoneNumber": "+20 1234567890",
-      "additionalDetails": "Apartment 302"
-    }
-  ]
-}
-```
+- `GET /api/health`
+- `POST /api/prescriptions/upload`
+- `GET /api/prescriptions/:id`
+- `GET /api/prescriptions/by-order/:orderId`
+- `PATCH /api/prescriptions/:id`
+- `DELETE /api/prescriptions/:id`
 
-#### Get Address by ID
-```http
-GET /users/me/addresses/{id}
-```
+Key behavior:
 
-#### Create Address
-```http
-POST /users/me/addresses
-```
+- orders can reference uploaded prescriptions
+- pharmacists can retrieve the prescription linked to the order they are reviewing
 
-**Request Body:**
-```json
-{
-  "nickname": "Home",
-  "fullName": "John Doe",
-  "address": "123 Main St",
-  "building": "Building 5",
-  "floor": "3rd Floor",
-  "phoneNumber": "+20 1234567890",
-  "additionalDetails": "Apartment 302"
-}
-```
+## Core Product Flows And Their Service Dependencies
 
-**Valid Nickname Values:**
-- `Home`
-- `Work`
-- `Mom's`
-- `Other`
+### Patient order flow
 
-#### Update Address
-```http
-PUT /users/me/addresses/{id}
-```
+1. auth service registers or logs the user in
+2. medicines service supports search and category browsing
+3. pharmacies service supplies pharmacy inventory
+4. addresses service stores delivery destinations
+5. favorites service stores favorites
+6. prescriptions service handles optional upload
+7. orders service creates and tracks the order
 
-**Request Body:** Same as create
+### Pharmacist flow
 
-#### Delete Address
-```http
-DELETE /users/me/addresses/{id}
-```
+1. auth registers a pharmacist user
+2. pharmacies registers and stores the owned pharmacy
+3. pharmacies manages inventory
+4. orders exposes pharmacist-owned order queues and status transitions
+5. prescriptions exposes order-linked prescription details
 
-**Response:**
-```json
-{
-  "success": true,
-  "message": "Address deleted successfully"
-}
-```
+### Driver flow
 
----
+1. auth registers or logs in the driver
+2. orders provides available deliveries, active delivery state, history, and stats
 
-### Favorites API (User-specific)
+## Contract Change Rules
 
-#### Get All Favorites
-```http
-GET /users/me/favorites?sort={field}&order={asc|desc}
-```
+When changing an API contract:
 
-**Response:**
-```json
-{
-  "data": [
-    {
-      "medicineId": 1,
-      "medicineName": "Panadol Extra",
-      "category": "Pain Relief",
-      "lastPharmacyId": 1,
-      "lastPharmacyName": "El Ezaby Pharmacy",
-      "lastPrice": 27.50,
-      "addedAt": "2025-01-20T10:00:00Z"
-    }
-  ]
-}
-```
+- change the backend route and the frontend service layer together
+- keep server-side role enforcement intact
+- update tests that cover the changed behavior
+- validate with `npm test` and `npm run test:e2e` sequentially
 
-#### Add to Favorites
-```http
-POST /users/me/favorites
-```
+## Recommended Verification
 
-**Request Body:**
-```json
-{
-  "medicineId": 1,
-  "medicineName": "Panadol Extra",
-  "category": "Pain Relief",
-  "lastPharmacyId": 1,
-  "lastPharmacyName": "El Ezaby Pharmacy",
-  "lastPrice": 27.50
-}
-```
-
-**Note:** If medicine already in favorites, update the pharmacy/price info
-
-#### Remove from Favorites
-```http
-DELETE /users/me/favorites/{medicineId}
-```
-
-#### Check if Medicine is Favorite
-```http
-GET /users/me/favorites/{medicineId}/exists
-```
-
-**Response:**
-```json
-{
-  "exists": true
-}
-```
-
----
-
-### Cart API (Optional - may stay client-side only)
-
-If you decide to implement server-side cart synchronization:
-
-```http
-GET    /cart                    # Get user's cart
-POST   /cart/items              # Add item to cart
-PATCH  /cart/items/{medicineId} # Update quantity
-DELETE /cart/items/{medicineId} # Remove item
-DELETE /cart                    # Clear cart
-```
-
-**Note:** Current implementation uses `localStorage` for cart. You may choose to keep it client-side or sync with server.
-
----
-
-## Implementation Guide
-
-### Step 1: Set Up Your Backend
-
-1. Choose your stack (Node.js/Express, Python/FastAPI, Go/Gin, etc.)
-2. Implement database schema from `DATABASE_SCHEMA.md`
-3. Set up authentication (JWT recommended)
-4. Create API routes matching the endpoints above
-
-### Step 2: Update Service Files
-
-For each service file in `src/services/`, replace the mock implementations:
-
-**Example - `medicines.service.ts`:**
-
-```typescript
-// BEFORE (Mock implementation)
-static async searchMedicines(query: string): Promise<PharmacyMedicine[]> {
-  if (API_CONFIG.useMockData) {
-    return mockMedicines.filter(m => 
-      m.name.toLowerCase().includes(query.toLowerCase())
-    );
-  }
-  
-  return apiClient.get<PharmacyMedicine[]>(`/medicines`, { search: query });
-}
-
-// AFTER (Your backend is ready)
-static async searchMedicines(query: string): Promise<PharmacyMedicine[]> {
-  // Mock implementation removed, always use real API
-  return apiClient.get<PharmacyMedicine[]>(`/medicines`, { search: query });
-}
-```
-
-### Step 3: Configure Environment
-
-Update `.env`:
+For backend contract changes:
 
 ```bash
-# Point to your backend API or set the individual VITE_*_API_URL values
-VITE_API_BASE_URL=https://auth.pharmfind.com/api
-
-# Disable mock data
-VITE_ENABLE_MOCK_DATA=false
+npm --prefix server test
 ```
 
-### Step 4: Test Integration
+For repo-wide validation:
 
-1. Start your backend server
-2. Start frontend dev server: `npm run dev`
-3. Open browser DevTools → Network tab
-4. Test each feature and verify API calls
-5. Check for errors in console
-
-### Step 5: Handle Errors
-
-Ensure your API returns consistent error responses:
-
-```json
-{
-  "error": {
-    "message": "Medicine not found",
-    "status": 404,
-    "code": "MEDICINE_NOT_FOUND"
-  }
-}
+```bash
+npm run validate
 ```
 
-Frontend `apiClient` expects this format.
+## Related Docs
 
----
-
-## Authentication Flow (Future)
-
-When implementing authentication:
-
-1. **Login**:
-   - User submits credentials to `POST /auth/login`
-   - Backend returns JWT token
-   - Frontend stores token in `localStorage.setItem('auth_token', token)`
-   - `apiClient` automatically includes token in subsequent requests
-
-2. **Protected Routes**:
-   - Check for token in localStorage before rendering protected pages
-   - Redirect to login if token missing/expired
-
-3. **Logout**:
-   - Call `POST /auth/logout`
-   - Remove token from localStorage
-   - Redirect to login page
-
----
-
-## Testing Checklist
-
-### Medicines
-- [ ] Search medicines by name
-- [ ] Filter by category
-- [ ] Get medicine details
-- [ ] View pharmacy availability
-
-### Pharmacies
-- [ ] Search nearby pharmacies
-- [ ] View pharmacy details
-- [ ] View pharmacy inventory
-
-### Orders
-- [ ] Create new order
-- [ ] View order history
-- [ ] Track specific order
-- [ ] Update order status (admin)
-
-### Addresses
-- [ ] List saved addresses
-- [ ] Add new address
-- [ ] Edit address
-- [ ] Delete address
-
-### Favorites
-- [ ] Add to favorites
-- [ ] Remove from favorites
-- [ ] View favorites list
-
-### Cart (if server-side)
-- [ ] Add items
-- [ ] Update quantities
-- [ ] Remove items
-- [ ] Calculate totals
-- [ ] Clear cart
-
----
-
-## Common Issues & Solutions
-
-### Issue: CORS Errors
-**Solution:** Configure CORS on backend to allow requests from frontend origin:
-```javascript
-// Example for Express.js
-app.use(cors({
-  origin: 'http://localhost:8082', // Vite dev server
-  credentials: true
-}));
-```
-
-### Issue: 401 Unauthorized on all requests
-**Solution:** Check that JWT token is being sent correctly in Authorization header
-
-### Issue: Data format mismatch
-**Solution:** Ensure your API responses match the TypeScript interfaces in `src/types/`
-
-### Issue: Images not loading
-**Solution:** Ensure image URLs are absolute or properly configured CORS for asset server
-
----
-
-## Performance Considerations
-
-1. **Pagination**: Implement pagination for large datasets (medicines, orders)
-2. **Caching**: Consider caching medicine/pharmacy data (changes infrequently)
-3. **Debouncing**: Search requests should be debounced (already implemented in frontend)
-4. **Indexes**: Add database indexes on frequently queried columns (see DATABASE_SCHEMA.md)
-
----
-
-## Security Checklist
-
-- [ ] Implement rate limiting on API endpoints
-- [ ] Validate all input data
-- [ ] Sanitize user-generated content
-- [ ] Use HTTPS in production
-- [ ] Implement proper authentication & authorization
-- [ ] Set up Row-Level Security (RLS) for user data
-- [ ] Hash passwords with bcrypt/argon2
-- [ ] Implement CSRF protection
-- [ ] Set secure headers (helmet.js for Express)
-- [ ] Log security events
-
----
-
-## Deployment
-
-### Backend Deployment Options
-- **Node.js**: Heroku, Railway, Render, AWS Elastic Beanstalk
-- **Python**: Heroku, Railway, Google Cloud Run
-- **Go**: Railway, Fly.io, Google Cloud Run
-- **Database**: PostgreSQL on Supabase, Railway, or AWS RDS
-
-### Frontend Deployment
-Frontend is already configured for deployment on Lovable platform.
-
----
-
-## Support & Questions
-
-For questions about:
-- **API Design**: Review this document and `DATABASE_SCHEMA.md`
-- **TypeScript Types**: Check `src/types/` folder
-- **Service Layer**: Review `src/services/*.service.ts` files
-- **Frontend Behavior**: Check component files (but don't modify them!)
-
----
-
-## Next Steps
-
-1. ✅ Review this document and `DATABASE_SCHEMA.md`
-2. ✅ Implement database schema
-3. ✅ Create API endpoints
-4. ✅ Update service files to use real API
-5. ✅ Configure `.env` with your API URL
-6. ✅ Test integration
-7. ✅ Deploy backend
-8. ✅ Update production `.env` with production API URL
-9. ✅ Monitor and optimize
-
-Good luck with the backend implementation! 🚀
+- [Architecture](../ARCHITECTURE.md)
+- [Database Schema](./DATABASE_SCHEMA.md)
+- [Email Verification](./EMAIL_VERIFICATION.md)
+- [PostgreSQL Migration](./POSTGRES_MIGRATION.md)
